@@ -26,11 +26,11 @@ def _get_line_header(
     return [
         *([first_column] if isinstance(first_column, str) else first_column),
         direction,
-        "Avg Profit %",
-        f"Tot Profit {stake_currency}",
-        "Tot Profit %",
-        "Avg Duration",
-        "Win  Draw  Loss  Win%",
+        "平均收益 %",
+        f"总收益 {stake_currency}",
+        "总收益 %",
+        "平均持仓时间",
+        " 胜   平   负   胜率%",
     ]
 
 
@@ -54,7 +54,7 @@ def text_table_bt_results(
     :param title: Title of the table
     """
 
-    headers = _get_line_header("Pair", stake_currency, "Trades")
+    headers = _get_line_header("交易对", stake_currency, "交易次数")
     output = [
         [
             t["key"],
@@ -85,16 +85,16 @@ def text_table_tags(
     fallback: str = ""
     is_list = False
     if tag_type == "enter_tag":
-        title = "Enter Tag"
-        headers = _get_line_header(title, stake_currency, "Entries")
+        title = "入场标签"
+        headers = _get_line_header(title, stake_currency, "入场次数")
     elif tag_type == "exit_tag":
-        title = "Exit Reason"
-        headers = _get_line_header(title, stake_currency, "Exits")
+        title = "出场原因"
+        headers = _get_line_header(title, stake_currency, "出场次数")
         fallback = "exit_reason"
     else:
         # Mix tag
-        title = "Mixed Tag"
-        headers = _get_line_header(["Enter Tag", "Exit Reason"], stake_currency, "Trades")
+        title = "混合标签"
+        headers = _get_line_header(["入场标签", "出场原因"], stake_currency, "交易次数")
         floatfmt.insert(0, "s")
         is_list = True
 
@@ -226,7 +226,7 @@ def text_table_add_metrics(strat_results: dict) -> None:
         if "max_relative_drawdown" in strat_results:
             # Compatibility to show old hyperopt results
             drawdown_metrics.append(
-                ("Max % of account underwater", f"{strat_results['max_relative_drawdown']:.2%}")
+                ("最大账户回撤率 (Underwater)", f"{strat_results['max_relative_drawdown']:.2%}")
             )
         drawdown_account = (
             strat_results["max_drawdown_account"]
@@ -236,34 +236,34 @@ def text_table_add_metrics(strat_results: dict) -> None:
         drawdown_metrics.extend(
             [
                 (
-                    "Absolute drawdown",
+                    "最大回撤额 (绝对值)",
                     f"{fmt_coin(strat_results['max_drawdown_abs'], stake)} "
                     f"({drawdown_account:.2%})",
                 ),
                 (
-                    "Drawdown duration",
+                    "回撤持时",
                     strat_results["drawdown_duration"]
                     if "drawdown_duration" in strat_results
                     else "N/A",
                 ),
                 (
-                    "Profit at drawdown start",
+                    "回撤开始时的利润额",
                     fmt_coin(strat_results["max_drawdown_high"], stake),
                 ),
                 (
-                    "Profit at drawdown end",
+                    "回撤结束时的利润额",
                     fmt_coin(strat_results["max_drawdown_low"], stake),
                 ),
-                ("Drawdown start", strat_results["drawdown_start"]),
-                ("Drawdown end", strat_results["drawdown_end"]),
+                ("回撤开始日期", strat_results["drawdown_start"]),
+                ("回撤结束日期", strat_results["drawdown_end"]),
             ]
         )
 
         entry_adjustment_metrics = (
             [
-                ("Canceled Trade Entries", strat_results.get("canceled_trade_entries", "N/A")),
-                ("Canceled Entry Orders", strat_results.get("canceled_entry_orders", "N/A")),
-                ("Replaced Entry Orders", strat_results.get("replaced_entry_orders", "N/A")),
+                ("已撤销的入场交易", strat_results.get("canceled_trade_entries", "N/A")),
+                ("已撤销的入场订单", strat_results.get("canceled_entry_orders", "N/A")),
+                ("已替换的入场订单", strat_results.get("replaced_entry_orders", "N/A")),
             ]
             if strat_results.get("canceled_entry_orders", 0) > 0
             else []
@@ -292,35 +292,35 @@ def text_table_add_metrics(strat_results: dict) -> None:
         # command stores these results and newer version of freqtrade must be able to handle old
         # results with missing new fields.
         metrics = [
-            ("Backtesting from", strat_results["backtest_start"]),
-            ("Backtesting to", strat_results["backtest_end"]),
+            ("回测起始时间", strat_results["backtest_start"]),
+            ("回测结束时间", strat_results["backtest_end"]),
             *trading_mode,
-            ("Max open trades", strat_results["max_open_trades"]),
+            ("最大并发交易数", strat_results["max_open_trades"]),
             ("", ""),  # Empty line to improve readability
             (
-                "Total/Daily Avg Trades",
+                "总计 / 日均交易次数",
                 f"{strat_results['total_trades']} / {strat_results['trades_per_day']}",
             ),
             (
-                "Starting balance",
+                "初始账户余额",
                 fmt_coin(strat_results["starting_balance"], stake),
             ),
             (
-                "Final balance",
+                "最终账户余额",
                 fmt_coin(strat_results["final_balance"], stake),
             ),
             (
-                "Absolute profit ",
+                "净利润 (绝对值)",
                 fmt_coin(strat_results["profit_total_abs"], stake),
             ),
-            ("Total profit %", f"{strat_results['profit_total']:.2%}"),
-            ("CAGR %", f"{strat_results['cagr']:.2%}" if "cagr" in strat_results else "N/A"),
-            ("Sortino", f"{strat_results['sortino']:.2f}" if "sortino" in strat_results else "N/A"),
-            ("Sharpe", f"{strat_results['sharpe']:.2f}" if "sharpe" in strat_results else "N/A"),
-            ("Calmar", f"{strat_results['calmar']:.2f}" if "calmar" in strat_results else "N/A"),
-            ("SQN", f"{strat_results['sqn']:.2f}" if "sqn" in strat_results else "N/A"),
+            ("总收益率 %", f"{strat_results['profit_total']:.2%}"),
+            ("年化复合增长率 (CAGR) %", f"{strat_results['cagr']:.2%}" if "cagr" in strat_results else "N/A"),
+            ("索提诺比率 (Sortino)", f"{strat_results['sortino']:.2f}" if "sortino" in strat_results else "N/A"),
+            ("夏普比率 (Sharpe)", f"{strat_results['sharpe']:.2f}" if "sharpe" in strat_results else "N/A"),
+            ("卡玛比率 (Calmar)", f"{strat_results['calmar']:.2f}" if "calmar" in strat_results else "N/A"),
+            ("系统获利指标 (SQN)", f"{strat_results['sqn']:.2f}" if "sqn" in strat_results else "N/A"),
             (
-                "Profit factor",
+                "获利因子 (Profit Factor)",
                 (
                     f"{strat_results['profit_factor']:.2f}"
                     if "profit_factor" in strat_results
@@ -328,7 +328,7 @@ def text_table_add_metrics(strat_results: dict) -> None:
                 ),
             ),
             (
-                "Expectancy (Ratio)",
+                "交易期望值 (Ratio)",
                 (
                     f"{strat_results['expectancy']:.2f} ({strat_results['expectancy_ratio']:.2f})"
                     if "expectancy_ratio" in strat_results
@@ -336,61 +336,61 @@ def text_table_add_metrics(strat_results: dict) -> None:
                 ),
             ),
             (
-                "Avg. daily profit",
+                "日均利润",
                 fmt_coin(
                     (strat_results["profit_total_abs"] / strat_results["backtest_days"]),
                     stake,
                 ),
             ),
             (
-                "Avg. stake amount",
+                "平均单笔头寸",
                 fmt_coin(strat_results["avg_stake_amount"], stake),
             ),
             (
-                "Total trade volume",
+                "总交易成交额",
                 fmt_coin(strat_results["total_volume"], stake),
             ),
             *short_metrics,
             ("", ""),  # Empty line to improve readability
             (
-                "Best Pair",
+                "表现最佳交易对",
                 f"{strat_results['best_pair']['key']} "
                 f"{strat_results['best_pair']['profit_total']:.2%}",
             ),
             (
-                "Worst Pair",
+                "表现最差交易对",
                 f"{strat_results['worst_pair']['key']} "
                 f"{strat_results['worst_pair']['profit_total']:.2%}",
             ),
-            ("Best trade", f"{best_trade['pair']} {best_trade['profit_ratio']:.2%}"),
-            ("Worst trade", f"{worst_trade['pair']} {worst_trade['profit_ratio']:.2%}"),
+            ("单笔最佳交易", f"{best_trade['pair']} {best_trade['profit_ratio']:.2%}"),
+            ("单笔最差交易", f"{worst_trade['pair']} {worst_trade['profit_ratio']:.2%}"),
             (
-                "Best day",
+                "获利最高日",
                 fmt_coin(strat_results["backtest_best_day_abs"], stake),
             ),
             (
-                "Worst day",
+                "亏损最高日",
                 fmt_coin(strat_results["backtest_worst_day_abs"], stake),
             ),
             (
-                "Days win/draw/lose",
+                "盈利/持平/亏损天数",
                 f"{strat_results['winning_days']} / "
                 f"{strat_results['draw_days']} / {strat_results['losing_days']}",
             ),
             (
-                "Min/Max/Avg. Duration Winners",
+                "获利单 持仓最短/最长/平均时间",
                 f"{strat_results.get('winner_holding_min', 'N/A')} / "
                 f"{strat_results.get('winner_holding_max', 'N/A')} / "
                 f"{strat_results.get('winner_holding_avg', 'N/A')}",
             ),
             (
-                "Min/Max/Avg. Duration Losers",
+                "亏损单 持仓最短/最长/平均时间",
                 f"{strat_results.get('loser_holding_min', 'N/A')} / "
                 f"{strat_results.get('loser_holding_max', 'N/A')} / "
                 f"{strat_results.get('loser_holding_avg', 'N/A')}",
             ),
             (
-                "Max Consecutive Wins / Loss",
+                "最大连续盈利 / 亏损次数",
                 (
                     (
                         f"{strat_results['max_consecutive_wins']} / "
@@ -400,20 +400,20 @@ def text_table_add_metrics(strat_results: dict) -> None:
                     else "N/A"
                 ),
             ),
-            ("Rejected Entry signals", strat_results.get("rejected_signals", "N/A")),
+            ("被拒绝的入场信号", strat_results.get("rejected_signals", "N/A")),
             (
-                "Entry/Exit Timeouts",
+                "入场/出场超时次数",
                 f"{strat_results.get('timedout_entry_orders', 'N/A')} / "
                 f"{strat_results.get('timedout_exit_orders', 'N/A')}",
             ),
             *entry_adjustment_metrics,
             ("", ""),  # Empty line to improve readability
-            ("Min balance", fmt_coin(strat_results["csum_min"], stake)),
-            ("Max balance", fmt_coin(strat_results["csum_max"], stake)),
+            ("账户余额最小值", fmt_coin(strat_results["csum_min"], stake)),
+            ("账户余额最大值", fmt_coin(strat_results["csum_max"], stake)),
             *drawdown_metrics,
-            ("Market change", f"{strat_results['market_change']:.2%}"),
+            ("市场涨跌幅 (Market Change)", f"{strat_results['market_change']:.2%}"),
         ]
-        print_rich_table(metrics, ["Metric", "Value"], summary="SUMMARY METRICS", justify="left")
+        print_rich_table(metrics, ["指标", "数值"], summary="策略回测汇总统计 (SUMMARY METRICS)", justify="left")
 
     else:
         start_balance = fmt_coin(strat_results["starting_balance"], stake)
@@ -454,10 +454,10 @@ def show_backtest_result(
     # Print results
     print(f"Result for strategy {strategy}")
     text_table_bt_results(
-        results["results_per_pair"], stake_currency=stake_currency, title="BACKTESTING REPORT"
+        results["results_per_pair"], stake_currency=stake_currency, title="策略回测明细报告 (BACKTESTING REPORT)"
     )
     text_table_bt_results(
-        results["left_open_trades"], stake_currency=stake_currency, title="LEFT OPEN TRADES REPORT"
+        results["left_open_trades"], stake_currency=stake_currency, title="未平仓交易报告 (LEFT OPEN TRADES REPORT)"
     )
 
     _show_tag_subresults(results, stake_currency)
@@ -494,7 +494,7 @@ def show_backtest_results(config: Config, backtest_stats: BacktestResultType):
             f" Max open trades : {results['max_open_trades']}"
         )
         text_table_strategy(
-            backtest_stats["strategy_comparison"], stake_currency, "STRATEGY SUMMARY"
+            backtest_stats["strategy_comparison"], stake_currency, "策略总计(STRATEGY SUMMARY)"
         )
 
 

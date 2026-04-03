@@ -24,18 +24,18 @@ class HyperoptOutput:
     def __init_table(self) -> None:
         """Initialize table"""
         self.table = Table(
-            title="Hyperopt results",
+            title="参数优化结果 (Hyperopt Results)",
         )
         # Headers
-        self.table.add_column("Best", justify="left")
-        self.table.add_column("Epoch", justify="right")
-        self.table.add_column("Trades", justify="right")
-        self.table.add_column("Win  Draw  Loss  Win%", justify="right")
-        self.table.add_column("Avg profit", justify="right")
-        self.table.add_column("Profit", justify="right")
-        self.table.add_column("Avg duration", justify="right")
-        self.table.add_column("Objective", justify="right")
-        self.table.add_column("Max Drawdown (Acct)", justify="right")
+        self.table.add_column("最佳", justify="left")
+        self.table.add_column("轮次", justify="right")
+        self.table.add_column("交易数", justify="right")
+        self.table.add_column("胜  平  负  胜率%", justify="right")
+        self.table.add_column("平均利润", justify="right")
+        self.table.add_column("总利润", justify="right")
+        self.table.add_column("平均持仓时间", justify="right")
+        self.table.add_column("目标值", justify="right")
+        self.table.add_column("最大回撤", justify="right")
 
     def print(self, console: Console | None = None, *, print_colorized=True):
         if not console:
@@ -82,7 +82,7 @@ class HyperoptOutput:
                     # "Best":
                     (
                         ("*" if r["is_initial_point"] or r["is_random"] else "")
-                        + (" Best" if r["is_best"] else "")
+                        + (" 最佳" if r["is_best"] else "")
                     ).lstrip(),
                     # "Epoch":
                     f"{r['current_epoch']}/{total_epochs}",
