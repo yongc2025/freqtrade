@@ -123,27 +123,21 @@ def fetch_market_scan():
 
         for symbol, ticker in selected:
             try:
-                # 用 Binance 原生 K线接口，直接取第8字段 quoteVolume（ccxt fetch_ohlcv 会丢弃该字段）
-                # 返回格式: [时间, open, high, low, close, baseVol, closeTime, quoteVol, trades, ...]
-                raw_symbol = symbol.replace("/USDT:USDT", "USDT")
-                raw_candles = exchange.publicGetFapiV1Klines({
-                    "symbol": raw_symbol, "interval": "1d", "limit": 3
-                })
-                candles = raw_candles[-3:] if len(raw_candles) >= 3 else raw_candles
+                ohlcv = exchange.fetch_ohlcv(symbol, "1d", limit=3)
+                candles = ohlcv[-3:] if len(ohlcv) >= 3 else ohlcv
                 if not candles:
                     continue
 
-                # 直接累加每根K线的精确 quoteVolume（索引7）
-                vol_3d_quote = sum(float(c[7]) for c in candles)
-                vol_3d_estimated = False
+                # 3日成交额：baseVolume × close 近似 USDT 成交额
+                vol_3d_quote = sum(c[5] * c[4] for c in candles)
 
-                # 3日起点：open（索引1），为0回退到close（索引4）
-                open_px = next((float(c[1]) or float(c[4]) for c in candles if float(c[1]) or float(c[4])), 0)
+                # 3日起点：open 为0时回退到 close
+                open_px = next((c[1] or c[4] for c in candles if c[1] or c[4]), 0)
                 if not open_px:
                     print(f"  skip {symbol}: K线价格全为0，数据损坏")
                     continue
                 # 3日终点：优先取实时价，回退到最新K线收盘价
-                last_px = ticker.get("last") or float(candles[-1][4])
+                last_px = ticker.get("last") or candles[-1][4]
                 change_3d = (last_px - open_px) / open_px * 100 if open_px else 0
 
                 # 上线天数：通过市场信息中的 created 字段计算
@@ -160,8 +154,8 @@ def fetch_market_scan():
                     "volume_24h":        round(ticker.get("_usdt_vol", ticker.get("quoteVolume", 0)), 0),
                     "volume_3d_quote":   round(vol_3d_quote, 0),
                     "price_change_3d":   round(change_3d, 2),
-                    "high_3d":           round(float(max(c[2] for c in candles)), 6),
-                    "low_3d":            round(float(min(c[3] for c in candles)), 6),
+                    "high_3d":           round(max(c[2] for c in candles), 6),
+                    "low_3d":            round(min(c[3] for c in candles), 6),
                     "volume_rank_overall": rank_map.get(symbol, 0),
                     "age_days":          round(age_days, 0) if age_days else None,
                     "age_ok":            (age_days is None or age_days >= 30),
