@@ -104,12 +104,6 @@ def fetch_market_scan():
         for s, t in tickers.items():
             if not (s.endswith("/USDT:USDT") and t.get("quoteVolume")):
                 continue
-            # 过滤非正常交易状态的合约（SETTLING/DELIVERING 表示正在下架结算）
-            market_info = exchange.markets.get(s, {})
-            status = market_info.get("info", {}).get("status", "TRADING")
-            if status != "TRADING":
-                print(f"  filter {s}: status={status}")
-                continue
             # USDT 本位合约的 quoteVolume 即为 USDT 成交额，直接使用
             t["_usdt_vol"] = t.get("quoteVolume") or 0
             usdt[s] = t
