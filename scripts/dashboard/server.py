@@ -7,6 +7,7 @@ FreqTrade Dashboard Server
   如：
   python scripts/dashboard/server.py
   # 或指定参数
+  
   python scripts/dashboard/server.py "user_data/tradesv3.sqlite" 1000 8788
 
 默认:
