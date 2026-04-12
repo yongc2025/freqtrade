@@ -121,8 +121,8 @@ def fetch_market_scan():
         for symbol, ticker in selected:
             try:
                 ohlcv = exchange.fetch_ohlcv(symbol, "1d", since=since, limit=4)
-                # Keep last 3 complete days (exclude today's partial candle)
-                candles = ohlcv[-4:-1] if len(ohlcv) >= 4 else ohlcv[:-1] if len(ohlcv) > 1 else ohlcv
+                # Keep last 3 candles INCLUDING today's partial candle
+                candles = ohlcv[-3:] if len(ohlcv) >= 3 else ohlcv
                 if not candles:
                     continue
 
@@ -135,8 +135,9 @@ def fetch_market_scan():
                     vol_3d_quote = vol_24h * 3
                     vol_3d_estimated = True
                 open_px  = candles[0][1]
-                close_px = candles[-1][4]
-                change_3d = (close_px - open_px) / open_px * 100 if open_px else 0
+                # Use real-time last price for change_3d (today's candle is still open)
+                last_px  = ticker.get("last") or candles[-1][4]
+                change_3d = (last_px - open_px) / open_px * 100 if open_px else 0
 
                 # Age filter: check listed date via market info
                 market  = exchange.market(symbol)

@@ -405,7 +405,7 @@
                 <thead>
                   <tr>
                     <th class="sortable" onclick="sortScanBy('volume_rank_3d')">
-                      3D量排名<span class="sort-indicator"></span>
+                      3D成交额排名<span class="sort-indicator"></span>
                     </th>
                     <th class="sortable" onclick="sortScanBy('display')">
                       币种<span class="sort-indicator"></span>
@@ -1153,7 +1153,7 @@
       <td>${fmtPrice(r.last_price)}</td>
       <td class="${pos(r.price_change_3d)}">${r.price_change_3d >= 0 ? "+" : ""}${r.price_change_3d.toFixed(2)}%</td>
       <td>${fmtVol(r.volume_24h)}</td>
-      <td>${fmtVol(r.volume_3d_quote)}${r.vol_3d_estimated ? '<span title="K线量为0，以24h量×3估算" style="color:#fbbf24;font-size:.65rem;margin-left:2px">~</span>' : ''}</td>
+      <td>${fmtVol(r.volume_3d_quote)}${r.vol_3d_estimated ? '<span title="K线量为0，以24h量×3估算" style="color:#fbbf24;font-size:.65rem;margin-left:2px">~</span>' : ""}</td>
       <td class="text-muted">#${r.volume_rank_overall}</td>
       <td class="${r.age_ok ? "" : "age-warn"}">${r.age_days != null ? r.age_days + "d" : "-"}</td>
     </tr>`,
