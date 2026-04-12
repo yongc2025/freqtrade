@@ -42,6 +42,12 @@ LIVE_REPORT_SCRIPT = SCRIPTS_DIR / "live_report.py"
 LIVE_REPORT_JSON   = ROOT / "user_data" / "live_report.json"
 SCAN_CACHE_FILE    = ROOT / "user_data" / "market_scan_cache.json"
 
+# ─── 选币扫描黑名单（异常拉盘/即将下架/低质量合约）──────────────────────────────
+# 格式：ccxt symbol，如 "ALPACA/USDT:USDT"
+SCAN_BLACKLIST: set = {
+    "ALPACA/USDT:USDT",   # 历史操控记录，下架前拉盘
+}
+
 # ─── 可选依赖检测 ─────────────────────────────────────────────────────────────────
 try:
     import ccxt
@@ -107,8 +113,11 @@ def fetch_market_scan():
             t["_usdt_vol"] = usdt_vol
             usdt[s] = t
 
-        # ── 第二步：按24h USDT 成交额排序，取前40名 ─────────────────────────────
-        top40 = sorted(usdt.items(), key=lambda x: x[1].get("_usdt_vol", 0), reverse=True)[:40]
+        # ── 第二步：按24h USDT 成交额排序，取前40名（黑名单已剔除）────────────
+        top40 = sorted(
+            [(s, t) for s, t in usdt.items() if s not in SCAN_BLACKLIST],
+            key=lambda x: x[1].get("_usdt_vol", 0), reverse=True
+        )[:40]
         rank_map = {sym: i + 1 for i, (sym, _) in enumerate(top40)}
 
         # ── 第三步：不使用 OffsetFilter，直接使用全部前40名 ────────────────────
