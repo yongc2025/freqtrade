@@ -46,6 +46,7 @@ SCAN_CACHE_FILE    = ROOT / "user_data" / "market_scan_cache.json"
 # 格式：ccxt symbol，如 "ALPACA/USDT:USDT"
 SCAN_BLACKLIST: set = {
     "ALPACA/USDT:USDT",   # 历史操控记录，下架前拉盘
+    "ALPHA/USDT:USDT",    # 低质量小币，易被操控拉盘
 }
 
 # ─── 可选依赖检测 ─────────────────────────────────────────────────────────────────
@@ -102,15 +103,8 @@ def fetch_market_scan():
         for s, t in tickers.items():
             if not (s.endswith("/USDT:USDT") and t.get("quoteVolume")):
                 continue
-            # 部分合约的 quoteVolume 是合约张数而非 USDT 成交额，需要修正
-            # 用 baseVolume × last_price 重新计算真实 USDT 成交额
-            base_vol  = t.get("baseVolume") or 0
-            last_px   = t.get("last") or 0
-            quote_vol = t.get("quoteVolume") or 0
-            # 若 quoteVolume 与计算值偏差超过一半，判定为张数，使用计算值替换
-            calc_usdt = base_vol * last_px
-            usdt_vol  = calc_usdt if (calc_usdt > 0 and (quote_vol < calc_usdt * 0.5 or quote_vol > calc_usdt * 2)) else quote_vol
-            t["_usdt_vol"] = usdt_vol
+            # USDT 本位合约的 quoteVolume 即为 USDT 成交额，直接使用
+            t["_usdt_vol"] = t.get("quoteVolume") or 0
             usdt[s] = t
 
         # ── 第二步：按24h USDT 成交额排序，取前40名（黑名单已剔除）────────────
