@@ -104,6 +104,9 @@ def fetch_market_scan():
         for s, t in tickers.items():
             if not (s.endswith("/USDT:USDT") and t.get("quoteVolume")):
                 continue
+            # 过滤非活跃合约（active=False 表示正在下架/结算中，UI 已搜不到）
+            if not exchange.markets.get(s, {}).get("active", True):
+                continue
             # USDT 本位合约的 quoteVolume 即为 USDT 成交额，直接使用
             t["_usdt_vol"] = t.get("quoteVolume") or 0
             usdt[s] = t
@@ -119,31 +122,31 @@ def fetch_market_scan():
         selected = top40
 
         # ── 第四步：逐对拉取日线K线（含今日未收盘的共3根）─────────────────────
-        since = int((datetime.now(timezone.utc) - timedelta(days=4)).timestamp() * 1000)
         results = []
 
         for symbol, ticker in selected:
             try:
-                ohlcv = exchange.fetch_ohlcv(symbol, "1d", since=since, limit=4)
-                # 取最近3根K线，包含今日未收盘的当前K线
-                candles = ohlcv[-3:] if len(ohlcv) >= 3 else ohlcv
+                # 用 Binance 原生 K线接口，直接取第8字段 quoteVolume（ccxt fetch_ohlcv 会丢弃该字段）
+                # 返回格式: [时间, open, high, low, close, baseVol, closeTime, quoteVol, trades, ...]
+                raw_symbol = symbol.replace("/USDT:USDT", "USDT")
+                raw_candles = exchange.publicGetFapiV1Klines({
+                    "symbol": raw_symbol, "interval": "1d", "limit": 3
+                })
+                candles = raw_candles[-3:] if len(raw_candles) >= 3 else raw_candles
                 if not candles:
                     continue
 
-                vol_3d_quote = sum(c[5] * c[4] for c in candles)  # base_vol × close ≈ USDT 成交额
-                # 兜底：部分合约日线的 base_vol 为0，改用修正后的24h成交额×3估算
-                vol_24h = ticker.get("_usdt_vol") or ticker.get("quoteVolume") or 0
+                # 直接累加每根K线的精确 quoteVolume（索引7）
+                vol_3d_quote = sum(float(c[7]) for c in candles)
                 vol_3d_estimated = False
-                if vol_3d_quote == 0 and vol_24h > 0:
-                    vol_3d_quote = vol_24h * 3
-                    vol_3d_estimated = True
-                # 3日起点：遍历所有K线，取第一个非零价格（open优先，否则用close）
-                open_px = next((c[1] or c[4] for c in candles if c[1] or c[4]), 0)
+
+                # 3日起点：open（索引1），为0回退到close（索引4）
+                open_px = next((float(c[1]) or float(c[4]) for c in candles if float(c[1]) or float(c[4])), 0)
                 if not open_px:
                     print(f"  skip {symbol}: K线价格全为0，数据损坏")
                     continue
                 # 3日终点：优先取实时价，回退到最新K线收盘价
-                last_px = ticker.get("last") or candles[-1][4]
+                last_px = ticker.get("last") or float(candles[-1][4])
                 change_3d = (last_px - open_px) / open_px * 100 if open_px else 0
 
                 # 上线天数：通过市场信息中的 created 字段计算
@@ -159,10 +162,9 @@ def fetch_market_scan():
                     "last_price":        round(ticker.get("last", 0), 6),
                     "volume_24h":        round(ticker.get("_usdt_vol", ticker.get("quoteVolume", 0)), 0),
                     "volume_3d_quote":   round(vol_3d_quote, 0),
-                    "vol_3d_estimated":  vol_3d_estimated,
                     "price_change_3d":   round(change_3d, 2),
-                    "high_3d":           round(max(c[2] for c in candles), 6),
-                    "low_3d":            round(min(c[3] for c in candles), 6),
+                    "high_3d":           round(float(max(c[2] for c in candles)), 6),
+                    "low_3d":            round(float(min(c[3] for c in candles)), 6),
                     "volume_rank_overall": rank_map.get(symbol, 0),
                     "age_days":          round(age_days, 0) if age_days else None,
                     "age_ok":            (age_days is None or age_days >= 30),
