@@ -26,14 +26,14 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-# ─── Path setup ────────────────────────────────────────────────────────────────
+# ─── 路径初始化 ────────────────────────────────────────────────────────────────
 THIS_DIR   = Path(__file__).parent
 SCRIPTS_DIR = THIS_DIR.parent
 ROOT       = SCRIPTS_DIR.parent
 
 sys.path.insert(0, str(ROOT))
 
-# ─── Config from argv ──────────────────────────────────────────────────────────
+# ─── 命令行参数配置 ──────────────────────────────────────────────────────────────
 DB_PATH           = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "user_data" / "tradesv3_momentum_live.sqlite"
 STARTING_BALANCE  = float(sys.argv[2]) if len(sys.argv) > 2 else 1000.0
 PORT              = int(sys.argv[3]) if len(sys.argv) > 3 else 8788
@@ -42,13 +42,13 @@ LIVE_REPORT_SCRIPT = SCRIPTS_DIR / "live_report.py"
 LIVE_REPORT_JSON   = ROOT / "user_data" / "live_report.json"
 SCAN_CACHE_FILE    = ROOT / "user_data" / "market_scan_cache.json"
 
-# ─── Optional deps ─────────────────────────────────────────────────────────────
+# ─── 可选依赖检测 ─────────────────────────────────────────────────────────────────
 try:
     import ccxt
     HAS_CCXT = True
 except ImportError:
     HAS_CCXT = False
-    print("WARNING: ccxt not installed. Market scanner unavailable.")
+    print("警告: ccxt 未安装，选币扫描功能不可用。")
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -56,14 +56,14 @@ try:
     HAS_SCHEDULER = True
 except ImportError:
     HAS_SCHEDULER = False
-    print("WARNING: apscheduler not installed. Auto daily-refresh disabled.")
+    print("警告: apscheduler 未安装，每日自动刷新功能不可用。")
 
 from fastapi import FastAPI, BackgroundTasks, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-# ─── Global state ──────────────────────────────────────────────────────────────
+# ─── 全局状态缓存 ──────────────────────────────────────────────────────────────
 _scan_cache   = {"data": [], "updated_at": None, "status": "idle", "count": 0}
 _report_cache = {"data": None, "updated_at": None, "status": "idle", "log": ""}
 
@@ -71,11 +71,11 @@ app = FastAPI(title="FreqTrade Dashboard")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MARKET SCANNER
+# 选币扫描模块
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def fetch_market_scan():
-    """Fetch Binance Futures data, apply pairlist logic, cache result."""
+    """拉取 Binance 合约行情，执行选币过滤逻辑，结果写入缓存。"""
     global _scan_cache
     _scan_cache["status"] = "running"
 
@@ -90,56 +90,55 @@ def fetch_market_scan():
             "enableRateLimit": True,
         })
 
-        # ── Step 1: all USDT perp tickers ─────────────────────────────────────
+        # ── 第一步：拉取所有 USDT 永续合约 ticker ──────────────────────────────────
         tickers = exchange.fetch_tickers()
         usdt = {}
         for s, t in tickers.items():
             if not (s.endswith("/USDT:USDT") and t.get("quoteVolume")):
                 continue
-            # quoteVolume on some Binance contracts is contract count, not USDT.
-            # Recalculate as baseVolume * last_price for accuracy.
+            # 部分合约的 quoteVolume 是合约张数而非 USDT 成交额，需要修正
+            # 用 baseVolume × last_price 重新计算真实 USDT 成交额
             base_vol  = t.get("baseVolume") or 0
             last_px   = t.get("last") or 0
             quote_vol = t.get("quoteVolume") or 0
-            # If quoteVolume < baseVolume * last * 0.5, it's likely contract count
+            # 若 quoteVolume 与计算值偏差超过一半，判定为张数，使用计算值替换
             calc_usdt = base_vol * last_px
             usdt_vol  = calc_usdt if (calc_usdt > 0 and (quote_vol < calc_usdt * 0.5 or quote_vol > calc_usdt * 2)) else quote_vol
             t["_usdt_vol"] = usdt_vol
             usdt[s] = t
 
-        # ── Step 2: sort by 24h quoteVolume, take top 80 ─────────────────────
-        top80 = sorted(usdt.items(), key=lambda x: x[1].get("_usdt_vol", 0), reverse=True)[:80]
-        rank_map = {sym: i + 1 for i, (sym, _) in enumerate(top80)}
+        # ── 第二步：按24h USDT 成交额排序，取前40名 ─────────────────────────────
+        top40 = sorted(usdt.items(), key=lambda x: x[1].get("_usdt_vol", 0), reverse=True)[:40]
+        rank_map = {sym: i + 1 for i, (sym, _) in enumerate(top40)}
 
-        # ── Step 3: OffsetFilter (skip 8, take 40) → index 8..47 ─────────────
-        selected = top80[8:48]
+        # ── 第三步：不使用 OffsetFilter，直接使用全部前40名 ────────────────────
+        selected = top40
 
-        # ── Step 4: fetch 3 daily candles for each selected pair ──────────────
+        # ── 第四步：逐对拉取日线K线（含今日未收盘的共3根）─────────────────────
         since = int((datetime.now(timezone.utc) - timedelta(days=4)).timestamp() * 1000)
         results = []
 
         for symbol, ticker in selected:
             try:
                 ohlcv = exchange.fetch_ohlcv(symbol, "1d", since=since, limit=4)
-                # Keep last 3 candles INCLUDING today's partial candle
+                # 取最近3根K线，包含今日未收盘的当前K线
                 candles = ohlcv[-3:] if len(ohlcv) >= 3 else ohlcv
                 if not candles:
                     continue
 
-                vol_3d_quote = sum(c[5] * c[4] for c in candles)  # base_vol * close ≈ quote vol
-                # Fallback: some contracts report 0 base_vol in daily candles;
-                # use corrected _usdt_vol as 24h estimate * 3
+                vol_3d_quote = sum(c[5] * c[4] for c in candles)  # base_vol × close ≈ USDT 成交额
+                # 兜底：部分合约日线的 base_vol 为0，改用修正后的24h成交额×3估算
                 vol_24h = ticker.get("_usdt_vol") or ticker.get("quoteVolume") or 0
                 vol_3d_estimated = False
                 if vol_3d_quote == 0 and vol_24h > 0:
                     vol_3d_quote = vol_24h * 3
                     vol_3d_estimated = True
                 open_px  = candles[0][1]
-                # Use real-time last price for change_3d (today's candle is still open)
+                # 3日涨跌幅终点用实时价格（今日K线尚未收盘）
                 last_px  = ticker.get("last") or candles[-1][4]
                 change_3d = (last_px - open_px) / open_px * 100 if open_px else 0
 
-                # Age filter: check listed date via market info
+                # 上线天数：通过市场信息中的 created 字段计算
                 market  = exchange.market(symbol)
                 created = market.get("created")
                 age_days = None
@@ -164,12 +163,12 @@ def fetch_market_scan():
                 print(f"  skip {symbol}: {e}")
                 continue
 
-        # ── Step 5: rank by 3d volume ─────────────────────────────────────────
+        # ── 第五步：按3日成交额重新排名 ──────────────────────────────────────────
         results.sort(key=lambda x: x["volume_3d_quote"], reverse=True)
         for i, r in enumerate(results):
             r["volume_rank_3d"] = i + 1
 
-        # AgeFilter: mark but keep all (UI can filter)
+        # AgeFilter 仅做标记，不剔除，由前端 UI 控制是否过滤
         cst = timezone(timedelta(hours=8))
         updated_at = datetime.now(cst).strftime("%Y-%m-%d %H:%M:%S CST")
 
@@ -191,7 +190,7 @@ def fetch_market_scan():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CLOSED TRADES — SQLite
+# 历史交易查询模块 — SQLite
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _build_where(exit_reason, pair, enter_tag, min_profit, max_profit,
@@ -317,7 +316,7 @@ def get_filter_options():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LIVE REPORT RUNNER
+# 实盘报告生成模块
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_live_report():
@@ -347,7 +346,7 @@ def run_live_report():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ROUTES
+# 路由接口
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/", response_class=HTMLResponse)
@@ -356,7 +355,7 @@ async def index():
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
-# ── Market Scanner ─────────────────────────────────────────────────────────────
+# ── 选币扫描接口 ───────────────────────────────────────────────────────────────
 
 @app.get("/api/market-scan")
 async def api_scan():
@@ -374,7 +373,7 @@ async def api_scan_refresh(bg: BackgroundTasks):
     return {"message": "started"}
 
 
-# ── Trades ─────────────────────────────────────────────────────────────────────
+# ── 历史交易接口 ───────────────────────────────────────────────────────────────
 
 @app.get("/api/trades")
 async def api_trades(
@@ -407,7 +406,7 @@ async def api_trade_filters():
     return get_filter_options()
 
 
-# ── Live Report ────────────────────────────────────────────────────────────────
+# ── 实盘报告接口 ───────────────────────────────────────────────────────────────
 
 @app.post("/api/live-report/run")
 async def api_report_run(bg: BackgroundTasks):
@@ -436,25 +435,25 @@ async def api_report_data():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SCHEDULER — 每日北京时间 08:00 自动更新选币
+# 定时任务 — 每日北京时间 08:00 自动更新选币
 # ═══════════════════════════════════════════════════════════════════════════════
 
 if HAS_SCHEDULER:
     _scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
     _scheduler.add_job(fetch_market_scan, CronTrigger(hour=8, minute=0, timezone="Asia/Shanghai"))
     _scheduler.start()
-    print("[scheduler] market scan registered at 08:00 CST daily")
+    print("[定时任务] 选币扫描已注册，每日北京时间 08:00 执行")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MAIN
+# 程序入口
 # ═══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    print(f"FreqTrade Dashboard")
-    print(f"  URL  : http://localhost:{PORT}")
-    print(f"  DB   : {DB_PATH}")
-    print(f"  Bal  : {STARTING_BALANCE} USDT")
-    print(f"  ccxt : {'ok' if HAS_CCXT else 'MISSING'}")
-    print(f"  sched: {'ok' if HAS_SCHEDULER else 'MISSING'}")
+    print(f"FreqTrade 看板服务")
+    print(f"  地址  : http://localhost:{PORT}")
+    print(f"  数据库: {DB_PATH}")
+    print(f"  初始金额: {STARTING_BALANCE} USDT")
+    print(f"  ccxt  : {'已加载' if HAS_CCXT else '未安装'}")
+    print(f"  定时器: {'已启用' if HAS_SCHEDULER else '未安装'}")
     uvicorn.run(app, host="0.0.0.0", port=PORT, reload=False)
