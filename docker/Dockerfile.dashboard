@@ -1,0 +1,11 @@
+FROM python:3.12.3-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir \
+    fastapi \
+    "uvicorn[standard]" \
+    ccxt \
+    apscheduler
+
+COPY scripts/ /app/scripts/

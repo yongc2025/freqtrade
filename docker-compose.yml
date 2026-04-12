@@ -26,11 +26,25 @@ services:
     # Please read the https://www.freqtrade.io/en/stable/rest-api/ documentation
     # for more information.
     ports:
-      - "127.0.0.1:8080:8080"
+      - "0.0.0.0:8787:8787"
     # Default command used when running `docker compose up`
     command: >
       trade
       --logfile /freqtrade/user_data/logs/freqtrade.log
       --db-url sqlite:////freqtrade/user_data/tradesv3.sqlite
-      --config /freqtrade/user_data/config.json
-      --strategy SampleStrategy
+      --config /freqtrade/user_data/config_momentum_server_dynamic.json
+      --strategy StabilityMasterV4_MomentumFusion
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: freqtrade-dashboard
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - "./user_data:/app/user_data"
+    ports:
+      - "0.0.0.0:8788:8788"
+    command: >
+      python scripts/dashboard/server.py
+      user_data/tradesv3.sqlite 950 8788

@@ -437,4 +437,4 @@ if __name__ == "__main__":
     print(f"  Bal  : {STARTING_BALANCE} USDT")
     print(f"  ccxt : {'ok' if HAS_CCXT else 'MISSING'}")
     print(f"  sched: {'ok' if HAS_SCHEDULER else 'MISSING'}")
-    uvicorn.run(app, host="127.0.0.1", port=PORT, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=PORT, reload=False)
