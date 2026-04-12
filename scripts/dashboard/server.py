@@ -46,7 +46,8 @@ SCAN_CACHE_FILE    = ROOT / "user_data" / "market_scan_cache.json"
 # 格式：ccxt symbol，如 "ALPACA/USDT:USDT"
 SCAN_BLACKLIST: set = {
     "ALPACA/USDT:USDT",   # 历史操控记录，下架前拉盘
-    "ALPHA/USDT:USDT",    # 低质量小币，易被操控拉盘
+    "ALPHA/USDT:USDT",    # 已下架/结算中
+    "BNX/USDT:USDT",      # 已下架/结算中
 }
 
 # ─── 可选依赖检测 ─────────────────────────────────────────────────────────────────
@@ -136,9 +137,13 @@ def fetch_market_scan():
                 if vol_3d_quote == 0 and vol_24h > 0:
                     vol_3d_quote = vol_24h * 3
                     vol_3d_estimated = True
-                open_px  = candles[0][1]
-                # 3日涨跌幅终点用实时价格（今日K线尚未收盘）
-                last_px  = ticker.get("last") or candles[-1][4]
+                # 3日起点：遍历所有K线，取第一个非零价格（open优先，否则用close）
+                open_px = next((c[1] or c[4] for c in candles if c[1] or c[4]), 0)
+                if not open_px:
+                    print(f"  skip {symbol}: K线价格全为0，数据损坏")
+                    continue
+                # 3日终点：优先取实时价，回退到最新K线收盘价
+                last_px = ticker.get("last") or candles[-1][4]
                 change_3d = (last_px - open_px) / open_px * 100 if open_px else 0
 
                 # 上线天数：通过市场信息中的 created 字段计算
