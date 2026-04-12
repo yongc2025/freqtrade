@@ -31,7 +31,7 @@ services:
     command: >
       trade
       --logfile /freqtrade/user_data/logs/freqtrade.log
-      --db-url sqlite:////freqtrade/user_data/tradesv3.sqlite
+      --db-url sqlite:////freqtrade/user_data/tradesv3_momentum_live.sqlite
       --config /freqtrade/user_data/config_momentum_server_dynamic.json
       --strategy StabilityMasterV4_MomentumFusion
   dashboard:
@@ -46,5 +46,4 @@ services:
     ports:
       - "0.0.0.0:8788:8788"
     command: >
-      python scripts/dashboard/server.py
-      user_data/tradesv3.sqlite 950 8788
+      python scripts/dashboard/server.py user_data/tradesv3.sqlite 950 8788

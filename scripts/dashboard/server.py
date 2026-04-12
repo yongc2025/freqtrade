@@ -7,11 +7,11 @@ FreqTrade Dashboard Server
   如：
   python scripts/dashboard/server.py
   # 或指定参数
-  
+
   python scripts/dashboard/server.py "user_data/tradesv3.sqlite" 1000 8788
 
 默认:
-  db_path          = user_data/tradesv3_momentum_live (1).sqlite
+  db_path          = user_data/tradesv3_momentum_live.sqlite
   starting_balance = 1000
   port             = 8788
 访问: http://localhost:8788
@@ -34,7 +34,7 @@ ROOT       = SCRIPTS_DIR.parent
 sys.path.insert(0, str(ROOT))
 
 # ─── Config from argv ──────────────────────────────────────────────────────────
-DB_PATH           = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "user_data" / "tradesv3_momentum_live (1).sqlite"
+DB_PATH           = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "user_data" / "tradesv3_momentum_live.sqlite"
 STARTING_BALANCE  = float(sys.argv[2]) if len(sys.argv) > 2 else 1000.0
 PORT              = int(sys.argv[3]) if len(sys.argv) > 3 else 8788
 
