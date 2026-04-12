@@ -92,13 +92,23 @@ def fetch_market_scan():
 
         # ── Step 1: all USDT perp tickers ─────────────────────────────────────
         tickers = exchange.fetch_tickers()
-        usdt = {
-            s: t for s, t in tickers.items()
-            if s.endswith("/USDT:USDT") and t.get("quoteVolume")
-        }
+        usdt = {}
+        for s, t in tickers.items():
+            if not (s.endswith("/USDT:USDT") and t.get("quoteVolume")):
+                continue
+            # quoteVolume on some Binance contracts is contract count, not USDT.
+            # Recalculate as baseVolume * last_price for accuracy.
+            base_vol  = t.get("baseVolume") or 0
+            last_px   = t.get("last") or 0
+            quote_vol = t.get("quoteVolume") or 0
+            # If quoteVolume < baseVolume * last * 0.5, it's likely contract count
+            calc_usdt = base_vol * last_px
+            usdt_vol  = calc_usdt if (calc_usdt > 0 and (quote_vol < calc_usdt * 0.5 or quote_vol > calc_usdt * 2)) else quote_vol
+            t["_usdt_vol"] = usdt_vol
+            usdt[s] = t
 
         # ── Step 2: sort by 24h quoteVolume, take top 80 ─────────────────────
-        top80 = sorted(usdt.items(), key=lambda x: x[1].get("quoteVolume", 0), reverse=True)[:80]
+        top80 = sorted(usdt.items(), key=lambda x: x[1].get("_usdt_vol", 0), reverse=True)[:80]
         rank_map = {sym: i + 1 for i, (sym, _) in enumerate(top80)}
 
         # ── Step 3: OffsetFilter (skip 8, take 40) → index 8..47 ─────────────
@@ -117,6 +127,13 @@ def fetch_market_scan():
                     continue
 
                 vol_3d_quote = sum(c[5] * c[4] for c in candles)  # base_vol * close ≈ quote vol
+                # Fallback: some contracts report 0 base_vol in daily candles;
+                # use corrected _usdt_vol as 24h estimate * 3
+                vol_24h = ticker.get("_usdt_vol") or ticker.get("quoteVolume") or 0
+                vol_3d_estimated = False
+                if vol_3d_quote == 0 and vol_24h > 0:
+                    vol_3d_quote = vol_24h * 3
+                    vol_3d_estimated = True
                 open_px  = candles[0][1]
                 close_px = candles[-1][4]
                 change_3d = (close_px - open_px) / open_px * 100 if open_px else 0
@@ -132,8 +149,9 @@ def fetch_market_scan():
                     "symbol":            symbol,
                     "display":           symbol.replace(":USDT", ""),
                     "last_price":        round(ticker.get("last", 0), 6),
-                    "volume_24h":        round(ticker.get("quoteVolume", 0), 0),
+                    "volume_24h":        round(ticker.get("_usdt_vol", ticker.get("quoteVolume", 0)), 0),
                     "volume_3d_quote":   round(vol_3d_quote, 0),
+                    "vol_3d_estimated":  vol_3d_estimated,
                     "price_change_3d":   round(change_3d, 2),
                     "high_3d":           round(max(c[2] for c in candles), 6),
                     "low_3d":            round(min(c[3] for c in candles), 6),

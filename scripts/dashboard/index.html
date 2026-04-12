@@ -420,13 +420,13 @@
                       3日涨幅%<span class="sort-indicator"></span>
                     </th>
                     <th class="sortable" onclick="sortScanBy('volume_24h')">
-                      24h成交量(U)<span class="sort-indicator"></span>
+                      24h成交额(U)<span class="sort-indicator"></span>
                     </th>
                     <th
                       class="sortable"
                       onclick="sortScanBy('volume_3d_quote')"
                     >
-                      3日成交量(U)<span class="sort-indicator"></span>
+                      3日成交额(U)<span class="sort-indicator"></span>
                     </th>
                     <th
                       class="sortable"
@@ -1153,7 +1153,7 @@
       <td>${fmtPrice(r.last_price)}</td>
       <td class="${pos(r.price_change_3d)}">${r.price_change_3d >= 0 ? "+" : ""}${r.price_change_3d.toFixed(2)}%</td>
       <td>${fmtVol(r.volume_24h)}</td>
-      <td>${fmtVol(r.volume_3d_quote)}</td>
+      <td>${fmtVol(r.volume_3d_quote)}${r.vol_3d_estimated ? '<span title="K线量为0，以24h量×3估算" style="color:#fbbf24;font-size:.65rem;margin-left:2px">~</span>' : ''}</td>
       <td class="text-muted">#${r.volume_rank_overall}</td>
       <td class="${r.age_ok ? "" : "age-warn"}">${r.age_days != null ? r.age_days + "d" : "-"}</td>
     </tr>`,
@@ -1191,8 +1191,8 @@
             "币种",
             "最新价",
             "3日涨幅%",
-            "24h成交量(U)",
-            "3日成交量(U)",
+            "24h成交额(U)",
+            "3日成交额(U)",
             "总排名",
             "上线天数",
           ],
