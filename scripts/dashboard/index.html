@@ -1,0 +1,1754 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FreqTrade Dashboard</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css"
+    />
+    <style>
+      :root {
+        --bg: #0f1117;
+        --card: #1a1d2e;
+        --card2: #1e2235;
+        --border: #2d3144;
+        --muted: #9ca3af;
+        --blue: #3b82f6;
+        --green: #4ade80;
+        --red: #f87171;
+      }
+      body {
+        background: var(--bg);
+        color: #e0e0e0;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        font-size: 14px;
+      }
+      .navbar {
+        background: var(--card) !important;
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-link {
+        color: var(--muted) !important;
+        padding: 12px 16px !important;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+      }
+      .nav-link:hover {
+        color: #e0e0e0 !important;
+      }
+      .nav-link.active {
+        color: var(--blue) !important;
+        border-bottom-color: var(--blue);
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      .card-header {
+        background: var(--card2);
+        border-bottom: 1px solid var(--border);
+        font-size: 0.85rem;
+      }
+      .table {
+        color: #e0e0e0;
+      }
+      .table-dark {
+        --bs-table-bg: var(--card);
+        --bs-table-border-color: var(--border);
+      }
+      .table-hover tbody tr:hover {
+        background: #252840 !important;
+      }
+      .table thead th {
+        background: var(--card2);
+        border-color: var(--border);
+        font-size: 0.8rem;
+        white-space: nowrap;
+      }
+      .form-control,
+      .form-select {
+        background: #252840;
+        color: #e0e0e0;
+        border-color: #3d4268;
+        font-size: 0.85rem;
+      }
+      .form-control:focus,
+      .form-select:focus {
+        background: #2d3154;
+        color: #e0e0e0;
+        border-color: var(--blue);
+        box-shadow: none;
+      }
+      .form-control::placeholder {
+        color: #6b7280;
+      }
+      .btn-primary {
+        background: var(--blue);
+        border-color: var(--blue);
+      }
+      .btn-outline-secondary {
+        color: var(--muted);
+        border-color: #3d4268;
+      }
+      .btn-outline-secondary:hover {
+        background: #2d3144;
+        color: #e0e0e0;
+      }
+      .page {
+        display: none;
+      }
+      .page.active {
+        display: block;
+      }
+      .positive {
+        color: var(--green);
+      }
+      .negative {
+        color: var(--red);
+      }
+      .neutral {
+        color: var(--muted);
+      }
+      .stat-card {
+        padding: 14px 12px;
+        text-align: center;
+      }
+      .stat-card .label {
+        font-size: 0.72rem;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .stat-card .value {
+        font-size: 1.05rem;
+        font-weight: 600;
+      }
+      .badge-long {
+        background: #064e3b;
+        color: #6ee7b7;
+        font-size: 0.7rem;
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      .badge-short {
+        background: #7f1d1d;
+        color: #fca5a5;
+        font-size: 0.7rem;
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      .badge-tag {
+        background: #1e3a5f;
+        color: #93c5fd;
+        font-size: 0.7rem;
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      .badge-exit {
+        background: #2d2040;
+        color: #c4b5fd;
+        font-size: 0.7rem;
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      .col-muted {
+        color: #c9d1d9;
+      } /* 替代 text-muted，暗色背景下可读 */
+      .col-time {
+        color: #a8b4c8;
+        font-size: 0.78rem;
+      }
+      .status-pill {
+        font-size: 0.72rem;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-weight: 500;
+      }
+      .sp-idle {
+        background: #374151;
+        color: var(--muted);
+      }
+      .sp-running {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+      .sp-ok {
+        background: #064e3b;
+        color: #6ee7b7;
+      }
+      .sp-error {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .table-sm td,
+      .table-sm th {
+        padding: 5px 8px;
+      }
+      .sticky-header {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: var(--card2) !important;
+      }
+      #log-box {
+        background: #080c14;
+        color: #6ee7b7;
+        font-family: "Courier New", monospace;
+        font-size: 0.78rem;
+        white-space: pre-wrap;
+        max-height: 280px;
+        overflow-y: auto;
+        border-radius: 6px;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+      }
+      .page-title {
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 0;
+      }
+      .page-sub {
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+      .sort-indicator {
+        font-size: 0.65rem;
+        opacity: 0.5;
+      }
+      th.sortable {
+        cursor: pointer;
+      }
+      th.sortable:hover {
+        color: var(--blue);
+      }
+      th.sort-asc .sort-indicator::after {
+        content: " ↑";
+        opacity: 1;
+        color: var(--blue);
+      }
+      th.sort-desc .sort-indicator::after {
+        content: " ↓";
+        opacity: 1;
+        color: var(--blue);
+      }
+      th .sort-indicator::after {
+        content: " ↕";
+      }
+      .age-warn {
+        color: #fbbf24;
+      }
+      .table-responsive {
+        overflow-x: auto;
+      }
+      /* 覆盖 Bootstrap text-muted，确保深色背景下可读 */
+      .text-muted {
+        color: #a8b4c8 !important;
+      }
+      .page-sub {
+        font-size: 0.75rem;
+        color: #a8b4c8;
+      }
+      .stat-card .label {
+        font-size: 0.72rem;
+        color: #a8b4c8;
+        margin-bottom: 4px;
+      }
+      .card-header {
+        color: #d0d8e8;
+      }
+      .card-footer {
+        color: #a8b4c8;
+      }
+      @media (max-width: 768px) {
+        .stat-card .value {
+          font-size: 0.9rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ── Navbar ─────────────────────────────────────────────────────────────── -->
+    <nav class="navbar sticky-top">
+      <div class="container-fluid px-3 d-flex align-items-center gap-1">
+        <span class="me-3 fw-bold text-primary" style="white-space: nowrap">
+          <i class="bi bi-graph-up-arrow me-1"></i>FreqTrade
+        </span>
+        <a class="nav-link active" href="#" onclick="showPage('scan', this)">
+          <i class="bi bi-radar me-1"></i>选币扫描
+        </a>
+        <a class="nav-link" href="#" onclick="showPage('trades', this)">
+          <i class="bi bi-list-check me-1"></i>历史交易
+        </a>
+        <a class="nav-link" href="#" onclick="showPage('report', this)">
+          <i class="bi bi-bar-chart-fill me-1"></i>实盘报告
+        </a>
+      </div>
+    </nav>
+
+    <div class="container-fluid px-3 py-3">
+      <!-- ══════════════════════════════════════════════════════════════════════════ -->
+      <!-- PAGE 1: Market Scanner                                                    -->
+      <!-- ══════════════════════════════════════════════════════════════════════════ -->
+      <div id="page-scan" class="page active">
+        <!-- Header -->
+        <div
+          class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-2"
+        >
+          <div>
+            <p class="page-title">
+              <i class="bi bi-bullseye me-2 text-primary"></i>选币扫描
+            </p>
+            <p class="page-sub">
+              规则：成交量前80 → OffsetFilter(跳过8,取40) → AgeFilter(≥30天) |
+              每日北京时间 08:00 自动更新
+            </p>
+          </div>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <span id="sp-scan" class="status-pill sp-idle">空闲</span>
+            <span
+              id="scan-time"
+              class="text-muted"
+              style="font-size: 0.75rem"
+            ></span>
+            <button
+              class="btn btn-sm btn-primary"
+              id="btn-scan"
+              onclick="refreshScan()"
+            >
+              <i class="bi bi-arrow-clockwise me-1"></i>立即更新
+            </button>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="card mb-3">
+          <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-sm-6 col-md-3">
+                <label class="form-label mb-1" style="font-size: 0.75rem"
+                  >搜索币种</label
+                >
+                <input
+                  type="text"
+                  class="form-control form-control-sm"
+                  id="sf-search"
+                  placeholder="BTC ETH..."
+                  oninput="renderScan()"
+                />
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label mb-1" style="font-size: 0.75rem"
+                  >3日涨幅 ≥ %</label
+                >
+                <input
+                  type="number"
+                  class="form-control form-control-sm"
+                  id="sf-min-chg"
+                  placeholder=""
+                  oninput="renderScan()"
+                />
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label mb-1" style="font-size: 0.75rem"
+                  >3日涨幅 ≤ %</label
+                >
+                <input
+                  type="number"
+                  class="form-control form-control-sm"
+                  id="sf-max-chg"
+                  placeholder=""
+                  oninput="renderScan()"
+                />
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label mb-1" style="font-size: 0.75rem"
+                  >仅显示 Age≥30天</label
+                >
+                <select
+                  class="form-select form-select-sm"
+                  id="sf-age"
+                  onchange="renderScan()"
+                >
+                  <option value="">全部</option>
+                  <option value="ok" selected>符合条件</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-3 d-flex gap-2">
+                <button
+                  class="btn btn-sm btn-outline-secondary"
+                  onclick="resetScanF()"
+                >
+                  <i class="bi bi-x-lg"></i> 重置
+                </button>
+                <button
+                  class="btn btn-sm btn-outline-success"
+                  onclick="exportScanCSV()"
+                >
+                  <i class="bi bi-download"></i> 导出
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="card">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-dark table-hover table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th class="sortable" onclick="sortScanBy('volume_rank_3d')">
+                      3D量排名<span class="sort-indicator"></span>
+                    </th>
+                    <th class="sortable" onclick="sortScanBy('display')">
+                      币种<span class="sort-indicator"></span>
+                    </th>
+                    <th class="sortable" onclick="sortScanBy('last_price')">
+                      最新价<span class="sort-indicator"></span>
+                    </th>
+                    <th
+                      class="sortable"
+                      onclick="sortScanBy('price_change_3d')"
+                    >
+                      3日涨幅%<span class="sort-indicator"></span>
+                    </th>
+                    <th class="sortable" onclick="sortScanBy('volume_24h')">
+                      24h成交量(U)<span class="sort-indicator"></span>
+                    </th>
+                    <th
+                      class="sortable"
+                      onclick="sortScanBy('volume_3d_quote')"
+                    >
+                      3日成交量(U)<span class="sort-indicator"></span>
+                    </th>
+                    <th
+                      class="sortable"
+                      onclick="sortScanBy('volume_rank_overall')"
+                    >
+                      总排名<span class="sort-indicator"></span>
+                    </th>
+                    <th>上线天数</th>
+                  </tr>
+                </thead>
+                <tbody id="scan-tbody">
+                  <tr>
+                    <td colspan="8" class="text-center py-4 text-muted">
+                      点击「立即更新」获取数据
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card-footer py-1">
+            <small class="text-muted" id="scan-count"></small>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════════════ -->
+      <!-- PAGE 2: Closed Trades                                                     -->
+      <!-- ══════════════════════════════════════════════════════════════════════════ -->
+      <div id="page-trades" class="page">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <p class="page-title mb-0">
+            <i class="bi bi-list-check me-2 text-primary"></i>历史交易记录
+          </p>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row g-2 mb-3" id="trade-stats">
+          <div class="col-6 col-md-2">
+            <div class="card stat-card">
+              <div class="label">总交易</div>
+              <div class="value" style="color: #e0e0e0" id="ts-total">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-2">
+            <div class="card stat-card">
+              <div class="label">总 PnL</div>
+              <div class="value" id="ts-pnl">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-2">
+            <div class="card stat-card">
+              <div class="label">胜率</div>
+              <div class="value" style="color: #e0e0e0" id="ts-wr">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-2">
+            <div class="card stat-card">
+              <div class="label">盈利因子</div>
+              <div class="value" id="ts-pf">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-2">
+            <div class="card stat-card">
+              <div class="label">平均盈亏</div>
+              <div class="value" id="ts-avg">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-2">
+            <div class="card stat-card">
+              <div class="label">最差单笔</div>
+              <div class="value" id="ts-worst">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="card mb-3">
+          <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-sm-6 col-md-2">
+                <label class="form-label mb-1" style="font-size: 0.75rem"
+                  >搜索币对</label
+                >
+                <input
+                  type="text"
+                  class="form-control form-control-sm"
+                  id="tf-pair"
+                  placeholder="BTC ETH..."
+                />
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label mb-1" style="font-size: 0.75rem"
+                  >出场原因</label
+                >
+                <select class="form-select form-select-sm" id="tf-reason">
+                  <option value="">全部</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label mb-1" style="font-size: 0.75rem"
+                  >入场标签</label
+                >
+                <select class="form-select form-select-sm" id="tf-tag">
+                  <option value="">全部</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-1">
+                <label class="form-label mb-1" style="font-size: 0.75rem"
+                  >方向</label
+                >
+                <select class="form-select form-select-sm" id="tf-dir">
+                  <option value="">全部</option>
+                  <option value="false">多头</option>
+                  <option value="true">空头</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label mb-1" style="font-size: 0.75rem"
+                  >日期范围</label
+                >
+                <div class="d-flex gap-1">
+                  <input
+                    type="date"
+                    class="form-control form-control-sm"
+                    id="tf-from"
+                  />
+                  <input
+                    type="date"
+                    class="form-control form-control-sm"
+                    id="tf-to"
+                  />
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label mb-1" style="font-size: 0.75rem"
+                  >盈亏% 范围</label
+                >
+                <div class="d-flex gap-1">
+                  <input
+                    type="number"
+                    class="form-control form-control-sm"
+                    id="tf-min-p"
+                    placeholder="最小"
+                  />
+                  <input
+                    type="number"
+                    class="form-control form-control-sm"
+                    id="tf-max-p"
+                    placeholder="最大"
+                  />
+                </div>
+              </div>
+              <div class="col-auto d-flex gap-1">
+                <button class="btn btn-sm btn-primary" onclick="loadTrades()">
+                  <i class="bi bi-search"></i>
+                </button>
+                <button
+                  class="btn btn-sm btn-outline-secondary"
+                  onclick="resetTradeF()"
+                >
+                  <i class="bi bi-x-lg"></i>
+                </button>
+                <button
+                  class="btn btn-sm btn-outline-success"
+                  onclick="exportTradesCSV()"
+                >
+                  <i class="bi bi-download"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="card">
+          <div class="card-header py-1 d-flex justify-content-between">
+            <small class="text-muted" id="trades-footer">-</small>
+          </div>
+          <div class="card-body p-0">
+            <div
+              class="table-responsive"
+              style="max-height: 580px; overflow-y: auto"
+            >
+              <table class="table table-dark table-hover table-sm mb-0">
+                <thead>
+                  <tr class="sticky-header">
+                    <th>ID</th>
+                    <th>币对</th>
+                    <th>方向</th>
+                    <th>入场时间</th>
+                    <th>出场时间</th>
+                    <th>持仓</th>
+                    <th>仓位(U)</th>
+                    <th>入场价</th>
+                    <th>出场价</th>
+                    <th>盈亏(U)</th>
+                    <th>盈亏%</th>
+                    <th>出场原因</th>
+                    <th>入场标签</th>
+                  </tr>
+                </thead>
+                <tbody id="trades-tbody">
+                  <tr>
+                    <td colspan="13" class="text-center py-4 text-muted">
+                      加载中...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════════════ -->
+      <!-- PAGE 3: Live Report                                                        -->
+      <!-- ══════════════════════════════════════════════════════════════════════════ -->
+      <div id="page-report" class="page">
+        <!-- Header -->
+        <div
+          class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-2"
+        >
+          <div>
+            <p class="page-title">
+              <i class="bi bi-bar-chart-fill me-2 text-primary"></i>实盘分析报告
+            </p>
+            <p class="page-sub">
+              基于 SQLite 实盘数据库，生成与回测格式对齐的分析指标
+            </p>
+          </div>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <span id="sp-report" class="status-pill sp-idle">空闲</span>
+            <span
+              id="report-time"
+              class="text-muted"
+              style="font-size: 0.75rem"
+            ></span>
+            <button
+              class="btn btn-sm btn-primary"
+              id="btn-report"
+              onclick="runReport()"
+            >
+              <i class="bi bi-play-fill me-1"></i>运行分析
+            </button>
+          </div>
+        </div>
+
+        <!-- Log -->
+        <div class="card mb-3" id="log-card" style="display: none">
+          <div class="card-header py-1">
+            <small><i class="bi bi-terminal me-1"></i>运行日志</small>
+          </div>
+          <div class="card-body p-2"><div id="log-box"></div></div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row g-2 mb-3" id="r-stats" style="display: none">
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">总 PnL</div>
+              <div class="value" id="r-pnl">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">胜率</div>
+              <div class="value" style="color: #e0e0e0" id="r-wr">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">Sharpe</div>
+              <div class="value" id="r-sharpe">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">Sortino</div>
+              <div class="value" id="r-sortino">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">Calmar</div>
+              <div class="value" id="r-calmar">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">Expectancy</div>
+              <div class="value" id="r-expect">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">Profit Factor</div>
+              <div class="value" id="r-pf">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">最大回撤</div>
+              <div class="value" id="r-dd">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">SQN</div>
+              <div class="value" id="r-sqn">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">CAGR</div>
+              <div class="value" id="r-cagr">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">总交易</div>
+              <div class="value" style="color: #e0e0e0" id="r-n">-</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3 col-lg-2">
+            <div class="card stat-card">
+              <div class="label">终止余额</div>
+              <div class="value" id="r-bal">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts & Tables -->
+        <div id="r-content" style="display: none">
+          <div class="row g-3">
+            <!-- Equity Curve -->
+            <div class="col-12">
+              <div class="card">
+                <div
+                  class="card-header py-1 d-flex justify-content-between align-items-center"
+                >
+                  <small>累计权益曲线 (USDT)</small>
+                  <div
+                    id="r-equity-stats"
+                    class="text-muted"
+                    style="font-size: 0.75rem"
+                  ></div>
+                </div>
+                <div class="card-body pb-2 pt-2">
+                  <canvas id="equity-chart" height="60"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <!-- Daily Bar Chart -->
+            <div class="col-12">
+              <div class="card">
+                <div class="card-header py-1">
+                  <small>每日收益 (USDT)</small>
+                </div>
+                <div class="card-body pb-2 pt-2">
+                  <canvas id="daily-chart" height="60"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <!-- Funding Fees -->
+            <div class="col-12 col-lg-4">
+              <div class="card">
+                <div class="card-header py-1">
+                  <small
+                    ><i class="bi bi-cash-coin me-1 text-warning"></i
+                    >资金费率消耗</small
+                  >
+                </div>
+                <div class="card-body p-0">
+                  <div
+                    class="table-responsive"
+                    style="max-height: 220px; overflow-y: auto"
+                  >
+                    <table class="table table-dark table-hover table-sm mb-0">
+                      <thead class="sticky-top" style="background: #1a1d2e">
+                        <tr>
+                          <th>币对</th>
+                          <th>费率合计(U)</th>
+                          <th>占盈亏%</th>
+                        </tr>
+                      </thead>
+                      <tbody id="funding-tbody"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div
+                  class="card-footer py-1 d-flex justify-content-between align-items-center"
+                >
+                  <small class="col-muted" id="funding-total"></small>
+                  <button
+                    class="btn btn-link btn-sm p-0"
+                    style="font-size: 0.72rem; color: #6b7db8"
+                    id="funding-toggle"
+                    onclick="toggleFunding()"
+                  >
+                    展开全部
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Exit Reasons -->
+            <div class="col-12 col-lg-4">
+              <div class="card">
+                <div class="card-header py-1"><small>出场原因统计</small></div>
+                <div class="card-body p-0">
+                  <div
+                    class="table-responsive"
+                    style="max-height: 260px; overflow-y: auto"
+                  >
+                    <table class="table table-dark table-hover table-sm mb-0">
+                      <thead class="sticky-top" style="background: #1a1d2e">
+                        <tr>
+                          <th>出场原因</th>
+                          <th>笔数</th>
+                          <th>PnL(U)</th>
+                          <th>均盈亏%</th>
+                          <th>胜率</th>
+                          <th>PF</th>
+                        </tr>
+                      </thead>
+                      <tbody id="exit-tbody"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div
+                  class="card-footer py-1 d-flex justify-content-between align-items-center"
+                >
+                  <small id="exit-count"></small>
+                  <button
+                    class="btn btn-link btn-sm p-0"
+                    style="font-size: 0.72rem; color: #6b7db8"
+                    id="exit-toggle"
+                    onclick="toggleExits()"
+                  >
+                    展开全部
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Enter Tags -->
+            <div class="col-12 col-lg-4">
+              <div class="card">
+                <div class="card-header py-1"><small>入场标签统计</small></div>
+                <div class="card-body p-0">
+                  <div
+                    class="table-responsive"
+                    style="max-height: 260px; overflow-y: auto"
+                  >
+                    <table class="table table-dark table-hover table-sm mb-0">
+                      <thead class="sticky-top" style="background: #1a1d2e">
+                        <tr>
+                          <th>入场标签</th>
+                          <th>笔数</th>
+                          <th>PnL(U)</th>
+                          <th>均盈亏%</th>
+                          <th>胜率</th>
+                          <th>期望値</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tag-tbody"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div
+                  class="card-footer py-1 d-flex justify-content-between align-items-center"
+                >
+                  <small id="tag-count"></small>
+                  <button
+                    class="btn btn-link btn-sm p-0"
+                    style="font-size: 0.72rem; color: #6b7db8"
+                    id="tag-toggle"
+                    onclick="toggleTags()"
+                  >
+                    展开全部
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Best Pairs -->
+            <div class="col-12 col-md-6">
+              <div class="card">
+                <div class="card-header py-1">
+                  <small
+                    ><i class="bi bi-arrow-up-circle text-success me-1"></i
+                    >最佳币种</small
+                  >
+                </div>
+                <div class="card-body p-0">
+                  <div
+                    class="table-responsive"
+                    style="max-height: 260px; overflow-y: auto"
+                  >
+                    <table class="table table-dark table-hover table-sm mb-0">
+                      <thead class="sticky-top" style="background: #1a1d2e">
+                        <tr>
+                          <th>币对</th>
+                          <th>笔数</th>
+                          <th>PnL(U)</th>
+                          <th>均盈亏%</th>
+                          <th>胜率</th>
+                        </tr>
+                      </thead>
+                      <tbody id="best-tbody"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div
+                  class="card-footer py-1 d-flex justify-content-between align-items-center"
+                >
+                  <small id="best-count"></small>
+                  <button
+                    class="btn btn-link btn-sm p-0"
+                    style="font-size: 0.72rem; color: #6b7db8"
+                    id="best-toggle"
+                    onclick="toggleBest()"
+                  >
+                    展开全部
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Worst Pairs -->
+            <div class="col-12 col-md-6">
+              <div class="card">
+                <div class="card-header py-1">
+                  <small
+                    ><i class="bi bi-arrow-down-circle text-danger me-1"></i
+                    >最差币种</small
+                  >
+                </div>
+                <div class="card-body p-0">
+                  <div
+                    class="table-responsive"
+                    style="max-height: 260px; overflow-y: auto"
+                  >
+                    <table class="table table-dark table-hover table-sm mb-0">
+                      <thead class="sticky-top" style="background: #1a1d2e">
+                        <tr>
+                          <th>币对</th>
+                          <th>笔数</th>
+                          <th>PnL(U)</th>
+                          <th>均盈亏%</th>
+                          <th>最大DD(U)</th>
+                        </tr>
+                      </thead>
+                      <tbody id="worst-tbody"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div
+                  class="card-footer py-1 d-flex justify-content-between align-items-center"
+                >
+                  <small id="worst-count"></small>
+                  <button
+                    class="btn btn-link btn-sm p-0"
+                    style="font-size: 0.72rem; color: #6b7db8"
+                    id="worst-toggle"
+                    onclick="toggleWorst()"
+                  >
+                    展开全部
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- container -->
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+      "use strict";
+
+      // ── Helpers ───────────────────────────────────────────────────────────────────
+      const $ = (id) => document.getElementById(id);
+      const fmtN = (v, d = 2) => (v == null ? "-" : (+v).toFixed(d));
+      const fmtPct = (v, d = 2) =>
+        v == null ? "-" : (+v >= 0 ? "+" : "") + (+v).toFixed(d) + "%";
+      const pos = (v) => (+v >= 0 ? "positive" : "negative");
+      const colored = (txt, v) => `<span class="${pos(v)}">${txt}</span>`;
+      function fmtVol(v) {
+        if (!v) return "-";
+        if (v >= 1e9) return (v / 1e9).toFixed(2) + "B";
+        if (v >= 1e6) return (v / 1e6).toFixed(1) + "M";
+        if (v >= 1e3) return (v / 1e3).toFixed(0) + "K";
+        return (+v).toFixed(0);
+      }
+      function fmtPrice(v) {
+        if (!v) return "-";
+        if (v >= 1000) return (+v).toFixed(2);
+        if (v >= 1) return (+v).toFixed(4);
+        return (+v).toFixed(6);
+      }
+      function fmtDur(open, close) {
+        if (!open || !close) return "-";
+        const h = Math.round((new Date(close) - new Date(open)) / 3600000);
+        return h >= 24 ? `${Math.floor(h / 24)}d${h % 24}h` : `${h}h`;
+      }
+      function setStatus(elId, status, text) {
+        const el = $(elId);
+        el.className = "status-pill sp-" + (status || "idle");
+        el.textContent = text || status;
+      }
+      function downloadCSV(name, headers, rows) {
+        const esc = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+        const csv = [headers, ...rows]
+          .map((r) => r.map(esc).join(","))
+          .join("\n");
+        const a = document.createElement("a");
+        a.href = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(csv);
+        a.download = name;
+        a.click();
+      }
+
+      // ── Navigation ────────────────────────────────────────────────────────────────
+      function showPage(name, el) {
+        document
+          .querySelectorAll(".page")
+          .forEach((p) => p.classList.remove("active"));
+        document
+          .querySelectorAll(".nav-link")
+          .forEach((a) => a.classList.remove("active"));
+        $("page-" + name).classList.add("active");
+        if (el) el.classList.add("active");
+        if (name === "trades" && !_tradesLoaded) loadTrades();
+        if (name === "report") loadReportData();
+      }
+
+      // ══════════════════════════════════════════════════════════════════════════════
+      // PAGE 1 — Market Scanner
+      // ══════════════════════════════════════════════════════════════════════════════
+      let _scanData = [];
+      let _scanSort = { col: "volume_rank_3d", dir: 1 };
+
+      async function loadScanData() {
+        const d = await fetch("/api/market-scan").then((r) => r.json());
+        updateScanStatus(d);
+        if (d.data?.length) {
+          _scanData = d.data;
+          renderScan();
+        }
+      }
+
+      async function refreshScan() {
+        $("btn-scan").disabled = true;
+        setStatus("sp-scan", "running", "更新中...");
+        await fetch("/api/market-scan/refresh", { method: "POST" });
+        const iv = setInterval(async () => {
+          const d = await fetch("/api/market-scan").then((r) => r.json());
+          updateScanStatus(d);
+          if (d.status !== "running") {
+            clearInterval(iv);
+            $("btn-scan").disabled = false;
+            if (d.data?.length) {
+              _scanData = d.data;
+              renderScan();
+            }
+          }
+        }, 2000);
+      }
+
+      function updateScanStatus(d) {
+        const map = {
+          idle: ["idle", "空闲"],
+          running: ["running", "更新中..."],
+          ok: ["ok", "已更新"],
+          error: ["error", "错误"],
+        };
+        const [cls, txt] = map[d.status] || ["idle", d.status];
+        setStatus("sp-scan", cls, txt);
+        if (d.updated_at) $("scan-time").textContent = "更新: " + d.updated_at;
+      }
+
+      function filteredScanData() {
+        const q = $("sf-search").value.toLowerCase();
+        const minC = parseFloat($("sf-min-chg").value);
+        const maxC = parseFloat($("sf-max-chg").value);
+        const age = $("sf-age").value;
+        return _scanData
+          .filter((r) => {
+            if (q && !r.display.toLowerCase().includes(q)) return false;
+            if (!isNaN(minC) && r.price_change_3d < minC) return false;
+            if (!isNaN(maxC) && r.price_change_3d > maxC) return false;
+            if (age === "ok" && !r.age_ok) return false;
+            return true;
+          })
+          .sort((a, b) => {
+            const va = a[_scanSort.col] ?? 0,
+              vb = b[_scanSort.col] ?? 0;
+            return typeof va === "string"
+              ? va.localeCompare(vb) * _scanSort.dir
+              : (va - vb) * _scanSort.dir;
+          });
+      }
+
+      function renderScan() {
+        const data = filteredScanData();
+        const tbody = $("scan-tbody");
+        if (!data.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="8" class="text-center py-3 text-muted">无匹配数据</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data
+          .map(
+            (r) => `
+    <tr>
+      <td><b class="text-primary">#${r.volume_rank_3d}</b></td>
+      <td class="fw-bold">${r.display}</td>
+      <td>${fmtPrice(r.last_price)}</td>
+      <td class="${pos(r.price_change_3d)}">${r.price_change_3d >= 0 ? "+" : ""}${r.price_change_3d.toFixed(2)}%</td>
+      <td>${fmtVol(r.volume_24h)}</td>
+      <td>${fmtVol(r.volume_3d_quote)}</td>
+      <td class="text-muted">#${r.volume_rank_overall}</td>
+      <td class="${r.age_ok ? "" : "age-warn"}">${r.age_days != null ? r.age_days + "d" : "-"}</td>
+    </tr>`,
+          )
+          .join("");
+        $("scan-count").textContent =
+          `显示 ${data.length} / ${_scanData.length} 个币种`;
+      }
+
+      function sortScanBy(col) {
+        _scanSort.dir = _scanSort.col === col ? -_scanSort.dir : 1;
+        _scanSort.col = col;
+        // Update header arrows
+        document.querySelectorAll("#page-scan th.sortable").forEach((th) => {
+          th.classList.remove("sort-asc", "sort-desc");
+        });
+        // Find clicked th by text content matching
+        renderScan();
+      }
+
+      function resetScanF() {
+        ["sf-search", "sf-min-chg", "sf-max-chg"].forEach(
+          (id) => ($(id).value = ""),
+        );
+        $("sf-age").value = "ok";
+        renderScan();
+      }
+
+      function exportScanCSV() {
+        const data = filteredScanData();
+        downloadCSV(
+          "market_scan_" + new Date().toISOString().slice(0, 10) + ".csv",
+          [
+            "3D量排名",
+            "币种",
+            "最新价",
+            "3日涨幅%",
+            "24h成交量(U)",
+            "3日成交量(U)",
+            "总排名",
+            "上线天数",
+          ],
+          data.map((r) => [
+            r.volume_rank_3d,
+            r.display,
+            r.last_price,
+            r.price_change_3d,
+            r.volume_24h,
+            r.volume_3d_quote,
+            r.volume_rank_overall,
+            r.age_days,
+          ]),
+        );
+      }
+
+      // ══════════════════════════════════════════════════════════════════════════════
+      // PAGE 2 — Closed Trades
+      // ══════════════════════════════════════════════════════════════════════════════
+      let _tradesLoaded = false;
+      let _tradesData = [];
+
+      async function initTradeFilters() {
+        const d = await fetch("/api/trades/filters").then((r) => r.json());
+        const rs = $("tf-reason"),
+          ts = $("tf-tag");
+        (d.exit_reasons || []).forEach((v) => rs.add(new Option(v, v)));
+        (d.enter_tags || []).forEach((v) => ts.add(new Option(v, v)));
+      }
+
+      async function loadTrades() {
+        _tradesLoaded = true;
+        const p = new URLSearchParams();
+        const g = (id, key) => {
+          const v = $(id).value.trim();
+          if (v) p.append(key, v);
+        };
+        g("tf-pair", "pair");
+        g("tf-reason", "exit_reason");
+        g("tf-tag", "enter_tag");
+        g("tf-dir", "is_short");
+        g("tf-from", "date_from");
+        g("tf-to", "date_to");
+        g("tf-min-p", "min_profit");
+        g("tf-max-p", "max_profit");
+        const d = await fetch("/api/trades?" + p).then((r) => r.json());
+        _tradesData = d.trades || [];
+        renderTradeStats(d.stats || {});
+        renderTradeTable(_tradesData);
+      }
+
+      function renderTradeStats(s) {
+        const pnl = s.total_pnl || 0;
+        const pf = s.profit_factor || 0;
+        $("ts-total").textContent = s.total || "-";
+        $("ts-pnl").innerHTML = colored(
+          (pnl >= 0 ? "+" : "") + fmtN(pnl) + " U",
+          pnl,
+        );
+        $("ts-wr").textContent = s.winrate ? s.winrate.toFixed(1) + "%" : "-";
+        $("ts-pf").innerHTML = colored(pf === 999 ? "∞" : fmtN(pf, 3), pf - 1);
+        $("ts-avg").innerHTML = colored(
+          fmtPct(s.avg_profit_pct),
+          s.avg_profit_pct,
+        );
+        $("ts-worst").innerHTML =
+          `<span class="negative">${fmtN(s.worst_trade_pct)}%</span>`;
+        $("trades-footer").textContent =
+          `${s.total || 0} 笔 | 胜: ${s.wins || 0} 败: ${s.losses || 0} | 总盈: +${fmtN(s.gross_profit)} U | 总亏: -${fmtN(s.gross_loss)} U`;
+      }
+
+      function renderTradeTable(trades) {
+        const tbody = $("trades-tbody");
+        if (!trades.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="13" class="text-center py-3 text-muted">无数据</td></tr>';
+          return;
+        }
+        tbody.innerHTML = trades
+          .map((t) => {
+            const dir = t.is_short
+              ? '<span class="badge-short">空</span>'
+              : '<span class="badge-long">多</span>';
+            const pc = t.profit_abs >= 0 ? "positive" : "negative";
+            return `<tr>
+      <td class="col-muted">${t.id}</td>
+      <td class="fw-bold" style="color:#e0e0e0">${t.pair.replace(":USDT", "")}</td>
+      <td>${dir}</td>
+      <td class="col-time">${(t.open_date || "").slice(0, 16)}</td>
+      <td class="col-time">${(t.close_date || "").slice(0, 16)}</td>
+      <td class="col-muted">${fmtDur(t.open_date, t.close_date)}</td>
+      <td class="col-muted">${fmtN(t.stake_amount, 1)}</td>
+      <td class="col-muted">${fmtPrice(t.open_rate)}</td>
+      <td class="col-muted">${fmtPrice(t.close_rate)}</td>
+      <td class="${pc}">${t.profit_abs >= 0 ? "+" : ""}${fmtN(t.profit_abs)}</td>
+      <td class="${pc}">${t.profit_ratio >= 0 ? "+" : ""}${fmtN(t.profit_ratio)}%</td>
+      <td><span class="badge-exit">${t.exit_reason || "-"}</span></td>
+      <td><span class="badge-tag">${t.enter_tag || "-"}</span></td>
+    </tr>`;
+          })
+          .join("");
+      }
+
+      function resetTradeF() {
+        ["tf-pair", "tf-from", "tf-to", "tf-min-p", "tf-max-p"].forEach(
+          (id) => ($(id).value = ""),
+        );
+        ["tf-reason", "tf-tag", "tf-dir"].forEach(
+          (id) => ($(id).selectedIndex = 0),
+        );
+        loadTrades();
+      }
+
+      function exportTradesCSV() {
+        downloadCSV(
+          "trades_" + new Date().toISOString().slice(0, 10) + ".csv",
+          [
+            "ID",
+            "币对",
+            "方向",
+            "入场时间",
+            "出场时间",
+            "仓位(U)",
+            "入场价",
+            "出场价",
+            "盈亏(U)",
+            "盈亏%",
+            "出场原因",
+            "入场标签",
+          ],
+          _tradesData.map((t) => [
+            t.id,
+            t.pair,
+            t.is_short ? "空" : "多",
+            t.open_date,
+            t.close_date,
+            t.stake_amount,
+            t.open_rate,
+            t.close_rate,
+            t.profit_abs,
+            t.profit_ratio,
+            t.exit_reason,
+            t.enter_tag,
+          ]),
+        );
+      }
+
+      // ══════════════════════════════════════════════════════════════════════════════
+      // PAGE 3 — Live Report
+      // ══════════════════════════════════════════════════════════════════════════════
+      let _dailyChart = null;
+      let _equityChart = null;
+      let _reportPoll = null;
+
+      async function runReport() {
+        $("btn-report").disabled = true;
+        $("log-card").style.display = "";
+        $("log-box").textContent = "正在启动分析...\n";
+        setStatus("sp-report", "running", "运行中...");
+        await fetch("/api/live-report/run", { method: "POST" });
+        _reportPoll = setInterval(async () => {
+          const s = await fetch("/api/live-report/status").then((r) =>
+            r.json(),
+          );
+          if (s.log) $("log-box").textContent = s.log;
+          setStatus(
+            "sp-report",
+            s.status,
+            s.status === "running"
+              ? "运行中..."
+              : s.status === "ok"
+                ? "已完成"
+                : s.status === "error"
+                  ? "错误"
+                  : s.status,
+          );
+          if (s.status !== "running") {
+            clearInterval(_reportPoll);
+            $("btn-report").disabled = false;
+            if (s.status === "ok") loadReportData();
+          }
+        }, 1500);
+      }
+
+      async function loadReportData() {
+        const d = await fetch("/api/live-report/data").then((r) => r.json());
+        if (d.status === "ok" && d.data) {
+          setStatus("sp-report", "ok", "已完成");
+          if (d.updated_at)
+            $("report-time").textContent = "更新: " + d.updated_at;
+          renderReport(d.data);
+        }
+      }
+
+      function renderReport(d) {
+        $("r-stats").style.display = "";
+        $("r-content").style.display = "";
+
+        const pnl = d.profit_total_abs || 0;
+        const pf = d.profit_factor || 0;
+        const bal = d.final_balance || 0;
+
+        $("r-pnl").innerHTML = colored(
+          (pnl >= 0 ? "+" : "") + fmtN(pnl) + " U",
+          pnl,
+        );
+        $("r-wr").textContent = ((d.winrate || 0) * 100).toFixed(1) + "%";
+        $("r-sharpe").innerHTML = colored(fmtN(d.sharpe, 3), d.sharpe);
+        $("r-sortino").innerHTML = colored(fmtN(d.sortino, 3), d.sortino);
+        $("r-calmar").innerHTML = colored(fmtN(d.calmar, 3), d.calmar);
+        $("r-expect").innerHTML = colored(
+          fmtPct((d.expectancy || 0) * 100, 3),
+          d.expectancy,
+        );
+        $("r-pf").innerHTML = colored(pf === 999 ? "∞" : fmtN(pf, 3), pf - 1);
+        $("r-dd").innerHTML =
+          `<span class="negative">${fmtPct((d.max_drawdown_account || 0) * 100)}</span>`;
+        $("r-sqn").innerHTML = colored(fmtN(d.sqn, 3), d.sqn);
+        $("r-cagr").innerHTML = colored(fmtPct(d.cagr), d.cagr);
+        $("r-n").textContent =
+          `${d.total_trades || 0} (多${d.trade_count_long || 0}/空${d.trade_count_short || 0})`;
+        $("r-bal").innerHTML = colored(
+          fmtN(bal) + " U",
+          bal - (d.starting_balance || 1000),
+        );
+
+        // Exit reasons
+        window._exitAll = (d.exit_reason_summary || []).sort(
+          (a, b) => b.profit_total_abs - a.profit_total_abs,
+        );
+        window._exitExpanded = false;
+        renderExits(false);
+
+        // Enter tags
+        window._tagAll = (d.results_per_enter_tag || []).sort(
+          (a, b) => b.profit_total_abs - a.profit_total_abs,
+        );
+        window._tagExpanded = false;
+        renderTags(false);
+
+        // Best/Worst pairs
+        const pairs = d.results_per_pair || [];
+        const sorted = [...pairs].sort(
+          (a, b) => b.profit_total_abs - a.profit_total_abs,
+        );
+        window._bestAll = sorted;
+        window._worstAll = [...sorted].reverse();
+        window._bestExpanded = false;
+        window._worstExpanded = false;
+        renderBest(false);
+        renderWorst(false);
+
+        // Equity Curve
+        const startBal = d.starting_balance || 1000;
+        const trades = d.trades || [];
+        const sortedT = [...trades].sort(
+          (a, b) => new Date(a.close_date) - new Date(b.close_date),
+        );
+        let cumEq = startBal;
+        const eqLabels = [
+          d.backtest_start ? d.backtest_start.slice(0, 10) : "",
+        ];
+        const eqVals = [startBal];
+        sortedT.forEach((t) => {
+          cumEq += t.profit_abs || 0;
+          eqLabels.push((t.close_date || "").slice(0, 10));
+          eqVals.push(+cumEq.toFixed(2));
+        });
+        // Max drawdown region
+        const ddStart = d.drawdown_start ? d.drawdown_start.slice(0, 10) : null;
+        const ddEnd = d.drawdown_end ? d.drawdown_end.slice(0, 10) : null;
+        $("r-equity-stats").innerHTML =
+          `起始: ${fmtN(startBal)} U &nbsp;→&nbsp; 终止: <span class="${pos(eqVals[eqVals.length - 1] - startBal)}">${fmtN(eqVals[eqVals.length - 1])} U</span>` +
+          (ddStart ? `&nbsp;|&nbsp;最大回撤期: ${ddStart} ~ ${ddEnd}` : "");
+        if (_equityChart) _equityChart.destroy();
+        _equityChart = new Chart($("equity-chart").getContext("2d"), {
+          type: "line",
+          data: {
+            labels: eqLabels,
+            datasets: [
+              {
+                data: eqVals,
+                borderColor: "#3b82f6",
+                backgroundColor: "rgba(59,130,246,.08)",
+                borderWidth: 1.5,
+                pointRadius: 0,
+                fill: true,
+                tension: 0.3,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => fmtN(ctx.raw) + " U",
+                },
+              },
+            },
+            scales: {
+              x: {
+                ticks: {
+                  color: "#9ca3af",
+                  maxTicksLimit: 20,
+                  font: { size: 11 },
+                },
+                grid: { color: "#2d3144" },
+              },
+              y: {
+                ticks: { color: "#9ca3af", font: { size: 11 } },
+                grid: { color: "#2d3144" },
+              },
+            },
+          },
+        });
+
+        // Daily Chart
+        const daily = d.daily_profit || [];
+        const labels = daily.map((x) => x.date);
+        const vals = daily.map((x) => x.profit_abs);
+        if (_dailyChart) _dailyChart.destroy();
+        _dailyChart = new Chart($("daily-chart").getContext("2d"), {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [
+              {
+                data: vals,
+                backgroundColor: vals.map((v) =>
+                  v >= 0 ? "rgba(74,222,128,.65)" : "rgba(248,113,113,.65)",
+                ),
+                borderColor: vals.map((v) => (v >= 0 ? "#4ade80" : "#f87171")),
+                borderWidth: 1,
+                borderRadius: 2,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) =>
+                    (ctx.raw >= 0 ? "+" : "") + ctx.raw.toFixed(2) + " U",
+                },
+              },
+            },
+            scales: {
+              x: {
+                ticks: {
+                  color: "#9ca3af",
+                  maxTicksLimit: 20,
+                  font: { size: 11 },
+                },
+                grid: { color: "#2d3144" },
+              },
+              y: {
+                ticks: { color: "#9ca3af", font: { size: 11 } },
+                grid: { color: "#2d3144" },
+              },
+            },
+          },
+        });
+
+        // Funding Fees by pair
+        const fundMap = {};
+        sortedT.forEach((t) => {
+          const ff = t.funding_fees || 0;
+          if (!fundMap[t.pair]) fundMap[t.pair] = { ff: 0, pnl: 0 };
+          fundMap[t.pair].ff += ff;
+          fundMap[t.pair].pnl += t.profit_abs || 0;
+        });
+        const fundList = Object.entries(fundMap)
+          .filter(([, v]) => v.ff !== 0)
+          .sort((a, b) => a[1].ff - b[1].ff);
+        const totalFF = fundList.reduce((s, [, v]) => s + v.ff, 0);
+        $("funding-total").innerHTML = totalFF
+          ? `合计: <span class="${pos(totalFF)}" style="color:${totalFF >= 0 ? "#4ade80" : "#f87171"}">${totalFF >= 0 ? "+" : ""}${fmtN(totalFF)} U</span> (${fundList.length}对)`
+          : "无资金费率记录（干跑模式不收取）";
+
+        // 存全量列表供展开/收起使用
+        window._fundListAll = fundList;
+        window._fundExpanded = false;
+        renderFunding(false);
+      }
+
+      function _toggleBtn(btnId, list, expanded, TOP, label) {
+        const btn = $(btnId);
+        if (!btn) return;
+        if (list.length <= TOP) {
+          btn.style.display = "none";
+          return;
+        }
+        btn.style.display = "";
+        btn.textContent = expanded ? "收起" : `展开全部 (${list.length}条)`;
+      }
+
+      function renderExits(expanded) {
+        const list = window._exitAll || [];
+        const TOP = 5;
+        const shown = expanded ? list : list.slice(0, TOP);
+        $("exit-tbody").innerHTML =
+          shown
+            .map((r) => {
+              const wr = r.trades ? ((r.wins / r.trades) * 100).toFixed(0) : 0;
+              const pf2 =
+                r.profit_factor === 999 ? "∞" : fmtN(r.profit_factor, 3);
+              return `<tr>
+      <td><span class="badge-exit">${r.key}</span></td>
+      <td class="col-muted">${r.trades}</td>
+      <td class="${pos(r.profit_total_abs)}">${r.profit_total_abs >= 0 ? "+" : ""}${fmtN(r.profit_total_abs)}</td>
+      <td class="${pos(r.profit_mean_pct)}">${r.profit_mean_pct >= 0 ? "+" : ""}${fmtN(r.profit_mean_pct)}%</td>
+      <td class="col-muted">${wr}%</td>
+      <td class="${pos(r.profit_factor - 1)}">${pf2}</td>
+    </tr>`;
+            })
+            .join("") ||
+          '<tr><td colspan="6" class="text-center col-muted">无数据</td></tr>';
+        const cnt = $("exit-count");
+        if (cnt) cnt.textContent = `共 ${list.length} 种出场原因`;
+        _toggleBtn("exit-toggle", list, expanded, TOP);
+      }
+      function toggleExits() {
+        window._exitExpanded = !window._exitExpanded;
+        renderExits(window._exitExpanded);
+      }
+
+      function renderTags(expanded) {
+        const list = window._tagAll || [];
+        const TOP = 5;
+        const shown = expanded ? list : list.slice(0, TOP);
+        $("tag-tbody").innerHTML =
+          shown
+            .map((r) => {
+              const wr = r.trades ? ((r.wins / r.trades) * 100).toFixed(0) : 0;
+              const ex = ((r.expectancy || 0) * 100).toFixed(3);
+              return `<tr>
+      <td><span class="badge-tag">${r.key}</span></td>
+      <td class="col-muted">${r.trades}</td>
+      <td class="${pos(r.profit_total_abs)}">${r.profit_total_abs >= 0 ? "+" : ""}${fmtN(r.profit_total_abs)}</td>
+      <td class="${pos(r.profit_mean_pct)}">${r.profit_mean_pct >= 0 ? "+" : ""}${fmtN(r.profit_mean_pct)}%</td>
+      <td class="col-muted">${wr}%</td>
+      <td class="${pos(r.expectancy)}">${r.expectancy >= 0 ? "+" : ""}${ex}%</td>
+    </tr>`;
+            })
+            .join("") ||
+          '<tr><td colspan="6" class="text-center col-muted">无数据</td></tr>';
+        const cnt = $("tag-count");
+        if (cnt) cnt.textContent = `共 ${list.length} 个入场标签`;
+        _toggleBtn("tag-toggle", list, expanded, TOP);
+      }
+      function toggleTags() {
+        window._tagExpanded = !window._tagExpanded;
+        renderTags(window._tagExpanded);
+      }
+
+      function renderBest(expanded) {
+        const list = window._bestAll || [];
+        const TOP = 5;
+        const shown = expanded ? list : list.slice(0, TOP);
+        $("best-tbody").innerHTML =
+          shown
+            .map((r) => {
+              const wr = r.trades ? ((r.wins / r.trades) * 100).toFixed(0) : 0;
+              return `<tr>
+      <td class="fw-bold col-muted">${r.key.replace(":USDT", "")}</td>
+      <td class="col-muted">${r.trades}</td>
+      <td class="${pos(r.profit_total_abs)}">${r.profit_total_abs >= 0 ? "+" : ""}${fmtN(r.profit_total_abs)}</td>
+      <td class="${pos(r.profit_mean_pct)}">${r.profit_mean_pct >= 0 ? "+" : ""}${fmtN(r.profit_mean_pct)}%</td>
+      <td class="col-muted">${wr}%</td>
+    </tr>`;
+            })
+            .join("") ||
+          '<tr><td colspan="5" class="text-center col-muted">无数据</td></tr>';
+        const cnt = $("best-count");
+        if (cnt) cnt.textContent = `共 ${list.length} 个币对`;
+        _toggleBtn("best-toggle", list, expanded, TOP);
+      }
+      function toggleBest() {
+        window._bestExpanded = !window._bestExpanded;
+        renderBest(window._bestExpanded);
+      }
+
+      function renderWorst(expanded) {
+        const list = window._worstAll || [];
+        const TOP = 5;
+        const shown = expanded ? list : list.slice(0, TOP);
+        $("worst-tbody").innerHTML =
+          shown
+            .map((r) => {
+              const wr = r.trades ? ((r.wins / r.trades) * 100).toFixed(0) : 0;
+              return `<tr>
+      <td class="fw-bold col-muted">${r.key.replace(":USDT", "")}</td>
+      <td class="col-muted">${r.trades}</td>
+      <td class="${pos(r.profit_total_abs)}">${r.profit_total_abs >= 0 ? "+" : ""}${fmtN(r.profit_total_abs)}</td>
+      <td class="${pos(r.profit_mean_pct)}">${r.profit_mean_pct >= 0 ? "+" : ""}${fmtN(r.profit_mean_pct)}%</td>
+      <td class="negative">${fmtN(r.max_drawdown_abs || 0)}</td>
+    </tr>`;
+            })
+            .join("") ||
+          '<tr><td colspan="5" class="text-center col-muted">无数据</td></tr>';
+        const cnt = $("worst-count");
+        if (cnt) cnt.textContent = `共 ${list.length} 个币对`;
+        _toggleBtn("worst-toggle", list, expanded, TOP);
+      }
+      function toggleWorst() {
+        window._worstExpanded = !window._worstExpanded;
+        renderWorst(window._worstExpanded);
+      }
+
+      function renderFunding(expanded) {
+        const fundList = window._fundListAll || [];
+        const btn = $("funding-toggle");
+        if (!fundList.length) {
+          $("funding-tbody").innerHTML =
+            '<tr><td colspan="3" class="text-center col-muted">无数据</td></tr>';
+          if (btn) btn.style.display = "none";
+          return;
+        }
+        const TOP = 8;
+        const shown = expanded ? fundList : fundList.slice(0, TOP);
+        $("funding-tbody").innerHTML = shown
+          .map(([pair, v]) => {
+            const pct = v.pnl
+              ? ((v.ff / Math.abs(v.pnl)) * 100).toFixed(1)
+              : "-";
+            return `<tr>
+      <td class="col-muted">${pair.replace(":USDT", "")}</td>
+      <td class="${pos(v.ff)}">${v.ff >= 0 ? "+" : ""}${fmtN(v.ff)}</td>
+      <td class="${pos(-Math.abs(parseFloat(pct)))}">-${Math.abs(parseFloat(pct) || 0).toFixed(1)}%</td>
+    </tr>`;
+          })
+          .join("");
+        if (btn) {
+          if (fundList.length <= TOP) {
+            btn.style.display = "none";
+          } else {
+            btn.style.display = "";
+            btn.textContent = expanded
+              ? "收起"
+              : `展开全部 (${fundList.length}对)`;
+          }
+        }
+      }
+
+      function toggleFunding() {
+        window._fundExpanded = !window._fundExpanded;
+        renderFunding(window._fundExpanded);
+      }
+      (async () => {
+        await Promise.all([loadScanData(), initTradeFilters()]);
+        loadTrades();
+      })();
+    </script>
+  </body>
+</html>
