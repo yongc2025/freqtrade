@@ -62,4 +62,4 @@ services:
     ports:
       - "0.0.0.0:8788:8788"
     command: >
-      python scripts/dashboard/server.py user_data/tradesv3_momentum_live.sqlite 950 8788
+      python scripts/dashboard/server_new.py user_data/tradesv3_momentum_live_v2.sqlite 950 8788
