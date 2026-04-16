@@ -15,7 +15,7 @@ from services.core import TradeService, MarketScanner, LiveReporter
 from routers import trades, analysis
 
 # 配置参数
-DB_PATH = ROOT / "user_data" / "tradesv3_momentum_live.sqlite"
+DB_PATH = ROOT / "user_data" / "tradesv3_momentum_live_v2.sqlite"
 STARTING_BALANCE = 1000.0
 PORT = 8788
 LIVE_REPORT_SCRIPT = THIS_DIR / "scripts" / "live_report.py"

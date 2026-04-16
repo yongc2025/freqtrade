@@ -197,8 +197,12 @@ body.bg-dark {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: linear-gradient(180deg, rgba(24, 38, 45, 0.98), rgba(18, 29, 34, 0.98));
-  box-shadow: inset 0 -1px 0 rgba(113, 181, 193, 0.10);
+  background: linear-gradient(
+    180deg,
+    rgba(24, 38, 45, 0.98),
+    rgba(18, 29, 34, 0.98)
+  );
+  box-shadow: inset 0 -1px 0 rgba(113, 181, 193, 0.1);
 }
 
 .report-grid > .grid-stack-item > .grid-stack-item-content,
@@ -792,7 +796,10 @@ body.bg-dark {
   visibility: hidden;
   pointer-events: none;
   transform: translateY(4px);
-  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 120ms ease;
   white-space: normal;
   overflow-wrap: break-word;
 }

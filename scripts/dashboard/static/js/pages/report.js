@@ -157,7 +157,10 @@
     }
 
     const matchedCount = Math.min(30, body.matching?.matched?.length || 0);
-    const anomalyCount = Math.min(20, body.matching?.top_anomalies?.length || 0);
+    const anomalyCount = Math.min(
+      20,
+      body.matching?.top_anomalies?.length || 0,
+    );
     const btOnlyCount = Math.min(50, body.matching?.bt_only?.length || 0);
     const liveOnlyCount = Math.min(50, body.matching?.live_only?.length || 0);
     const metricCount = body.overview?.metrics?.length || 0;
@@ -234,13 +237,15 @@
   function collectCompareLayout() {
     const host = getCompareGridHost();
     if (!host) return [];
-    return Array.from(host.querySelectorAll(".grid-stack-item")).map((item) => ({
-      id: item.getAttribute("gs-id"),
-      x: Number(item.getAttribute("gs-x") || 0),
-      y: Number(item.getAttribute("gs-y") || 0),
-      w: Number(item.getAttribute("gs-w") || 12),
-      h: Number(item.getAttribute("gs-h") || 1),
-    }));
+    return Array.from(host.querySelectorAll(".grid-stack-item")).map(
+      (item) => ({
+        id: item.getAttribute("gs-id"),
+        x: Number(item.getAttribute("gs-x") || 0),
+        y: Number(item.getAttribute("gs-y") || 0),
+        w: Number(item.getAttribute("gs-w") || 12),
+        h: Number(item.getAttribute("gs-h") || 1),
+      }),
+    );
   }
 
   function persistCompareLayout() {
@@ -512,7 +517,8 @@
       <div class="btn-group btn-group-sm compare-limit-switch" role="group">
         ${options
           .map(
-            (limit) => `<button class="btn ${currentLimit === limit ? "btn-info" : "btn-outline-secondary"}" onclick="setCompareTableLimit('${stateKey}', ${limit})">${limit}</button>`,
+            (limit) =>
+              `<button class="btn ${currentLimit === limit ? "btn-info" : "btn-outline-secondary"}" onclick="setCompareTableLimit('${stateKey}', ${limit})">${limit}</button>`,
           )
           .join("")}
       </div>
@@ -613,7 +619,11 @@
     const tbody = document.getElementById("compare-anomaly-body");
     if (!tbody) return;
     const totalRows = rows?.length || 0;
-    renderCompareTableControls("compare-anomaly-controls", "anomalies", totalRows);
+    renderCompareTableControls(
+      "compare-anomaly-controls",
+      "anomalies",
+      totalRows,
+    );
     if (!rows?.length) {
       tbody.innerHTML =
         '<tr><td colspan="10" class="text-center py-3 text-muted">暂无异常交易</td></tr>';
@@ -685,7 +695,9 @@
   function populateCompareFilterOptions(matchedRows) {
     const rows = matchedRows || [];
     const uniq = (list) =>
-      Array.from(new Set(list.filter((value) => value && value !== "-"))).sort();
+      Array.from(
+        new Set(list.filter((value) => value && value !== "-")),
+      ).sort();
     setSelectOptions(
       "compare-filter-pair",
       uniq(rows.map((row) => row.pair)),
@@ -733,7 +745,9 @@
     const countEl = document.getElementById("compare-filter-count");
     const pnlEl = document.getElementById("compare-filter-pnl");
     const entryDelayEl = document.getElementById("compare-filter-entry-delay");
-    const exitMismatchEl = document.getElementById("compare-filter-exit-mismatch");
+    const exitMismatchEl = document.getElementById(
+      "compare-filter-exit-mismatch",
+    );
     if (!countEl || !pnlEl || !entryDelayEl || !exitMismatchEl) return;
 
     const count = rows.length;
@@ -800,7 +814,9 @@
         avgPnlDiff: item.pnlDiff / item.count,
         avgConfidence: item.confidence / item.count,
       }))
-      .sort((left, right) => Math.abs(right.avgPnlDiff) - Math.abs(left.avgPnlDiff));
+      .sort(
+        (left, right) => Math.abs(right.avgPnlDiff) - Math.abs(left.avgPnlDiff),
+      );
 
     renderCompareTableControls(
       "compare-breakdown-controls",
@@ -838,7 +854,10 @@
     }
 
     const items = [...rows]
-      .sort((left, right) => Math.abs(right.pnl_diff_pct) - Math.abs(left.pnl_diff_pct))
+      .sort(
+        (left, right) =>
+          Math.abs(right.pnl_diff_pct) - Math.abs(left.pnl_diff_pct),
+      )
       .slice(0, COMPARE_STATE.limits.matched || 20);
 
     tbody.innerHTML = items
@@ -1812,15 +1831,23 @@
       return;
     }
     if (stateKey === "anomalies") {
-      renderCompareAnomalyRows(COMPARE_STATE.raw?.matching?.top_anomalies || []);
+      renderCompareAnomalyRows(
+        COMPARE_STATE.raw?.matching?.top_anomalies || [],
+      );
       return;
     }
     if (stateKey === "btOnly") {
-      renderCompareUnmatchedRows("compare-bt-only-body", COMPARE_STATE.raw?.matching?.bt_only || []);
+      renderCompareUnmatchedRows(
+        "compare-bt-only-body",
+        COMPARE_STATE.raw?.matching?.bt_only || [],
+      );
       return;
     }
     if (stateKey === "liveOnly") {
-      renderCompareUnmatchedRows("compare-live-only-body", COMPARE_STATE.raw?.matching?.live_only || []);
+      renderCompareUnmatchedRows(
+        "compare-live-only-body",
+        COMPARE_STATE.raw?.matching?.live_only || [],
+      );
     }
   };
   window.changeReportSectionPage = changeReportSectionPage;
