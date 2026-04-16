@@ -34,6 +34,22 @@ services:
       --db-url sqlite:////freqtrade/user_data/tradesv3_momentum_live.sqlite
       --config /freqtrade/user_data/config_momentum_server_dynamic.json
       --strategy StabilityMasterV4_MomentumFusion
+
+  freqtrade_v2: # 新增的第二套策略服务
+    image: freqtradeorg/freqtrade:stable
+    restart: unless-stopped
+    container_name: freqtrade_v2
+    volumes:
+      - "./user_data:/freqtrade/user_data"
+    ports:
+      - "0.0.0.0:8786:8786" # 映射新策略的 Web 端口
+    command: >
+      trade
+      --strategy MomentumFusion_V2
+      --config /freqtrade/user_data/config_momentum_server_v2.json
+      --db-url sqlite:////freqtrade/user_data/tradesv3_momentum_live_v2.sqlite
+      --logfile /freqtrade/user_data/logs/freqtrade_momentum_live_v2.log
+
   dashboard:
     build:
       context: .
