@@ -6,6 +6,7 @@ RUN pip install --no-cache-dir \
     fastapi \
     "uvicorn[standard]" \
     ccxt \
-    apscheduler
+    apscheduler \
+    python-multipart
 
 COPY scripts/ /app/scripts/
