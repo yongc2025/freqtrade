@@ -1,0 +1,547 @@
+<div
+  class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2"
+>
+  <div>
+    <h5 class="mb-1 text-success">
+      <i class="bi bi-bar-chart-line me-2"></i>实盘分析
+    </h5>
+    <div class="report-status-strip">
+      <span class="report-chip report-chip-state">
+        <span id="sp-report">未运行</span>
+      </span>
+      <span class="report-chip report-chip-meta">
+        <i class="bi bi-clock-history"></i>
+        <span id="report-time">无最新报告</span>
+      </span>
+    </div>
+  </div>
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    <span id="report-layout-status" class="small text-secondary"
+      >拖拽卡片可重排，布局自动保存在当前浏览器</span
+    >
+    <button class="btn btn-sm btn-outline-light" onclick="resetReportLayout()">
+      恢复默认布局
+    </button>
+    <button
+      id="btn-report"
+      class="btn btn-sm btn-success"
+      onclick="runReport()"
+    >
+      生成报告
+    </button>
+  </div>
+</div>
+
+<div class="card bg-secondary border-0 shadow-sm mb-3">
+  <div class="card-body report-summary-banner">
+    <div>
+      <div class="text-white fw-semibold">实盘分析摘要</div>
+      <div id="report-main-meta" class="report-runtime-meta mt-1">
+        实盘运行时间：等待生成实盘报告
+      </div>
+    </div>
+    <div id="report-warning" class="report-warning-banner mt-3 d-none"></div>
+  </div>
+</div>
+
+<div
+  id="log-card"
+  class="card bg-secondary border-0 shadow-sm mb-3"
+  style="display: none"
+>
+  <div class="card-header">分析日志</div>
+  <div class="card-body">
+    <pre
+      id="log-box"
+      class="mb-0 small text-light"
+      style="white-space: pre-wrap"
+    ></pre>
+  </div>
+</div>
+
+<div id="report-grid" class="grid-stack report-grid mb-3">
+  <div
+    class="grid-stack-item"
+    gs-id="report-kpis"
+    gs-x="0"
+    gs-y="0"
+    gs-w="12"
+    gs-h="2"
+  >
+    <div class="grid-stack-item-content">
+      <div
+        class="card bg-secondary border-0 shadow-sm report-card report-grid-card h-100"
+      >
+        <div class="report-widget-handle">关键指标</div>
+        <div class="card-body py-3">
+          <div class="row g-3">
+            <div class="col-md-6 col-xl-2">
+              <div class="card stat-card report-kpi-card">
+                <div class="label">交易数</div>
+                <div id="report-kpi-trades" class="value">-</div>
+              </div>
+            </div>
+            <div class="col-md-6 col-xl-2">
+              <div class="card stat-card report-kpi-card">
+                <div class="label">净利润</div>
+                <div id="report-kpi-pnl" class="value">-</div>
+              </div>
+            </div>
+            <div class="col-md-6 col-xl-2">
+              <div class="card stat-card report-kpi-card">
+                <div class="label">总收益率</div>
+                <div id="report-kpi-return" class="value">-</div>
+              </div>
+            </div>
+            <div class="col-md-6 col-xl-2">
+              <div class="card stat-card report-kpi-card">
+                <div class="label">胜率</div>
+                <div id="report-kpi-winrate" class="value">-</div>
+              </div>
+            </div>
+            <div class="col-md-6 col-xl-2">
+              <div class="card stat-card report-kpi-card">
+                <div class="label">Sharpe</div>
+                <div id="report-kpi-sharpe" class="value">-</div>
+              </div>
+            </div>
+            <div class="col-md-6 col-xl-2">
+              <div class="card stat-card report-kpi-card">
+                <div class="label">Profit Factor</div>
+                <div id="report-kpi-pf" class="value">-</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="grid-stack-item"
+    gs-id="report-equity"
+    gs-x="0"
+    gs-y="2"
+    gs-w="12"
+    gs-h="5"
+  >
+    <div class="grid-stack-item-content">
+      <div class="card bg-secondary border-0 shadow-sm report-card h-100">
+        <div
+          class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"
+        >
+          <span>总资金曲线</span>
+          <div id="report-equity-meta" class="small text-secondary">
+            等待生成资金曲线
+          </div>
+        </div>
+        <div class="card-body report-equity-panel">
+          <div id="report-equity-stats" class="report-equity-stats mb-3">
+            <div class="report-equity-stat">
+              <span class="report-equity-label">当前权益</span>
+              <span id="report-equity-current" class="report-equity-value"
+                >-</span
+              >
+            </div>
+            <div class="report-equity-stat">
+              <span class="report-equity-label">历史权益峰值</span>
+              <span id="report-equity-peak" class="report-equity-value">-</span>
+            </div>
+            <div class="report-equity-stat">
+              <span class="report-equity-label">当前资金回撤</span>
+              <span id="report-equity-drawdown" class="report-equity-value"
+                >-</span
+              >
+            </div>
+          </div>
+          <div id="report-equity-chart" class="report-equity-chart">
+            <div class="text-secondary small">等待实盘报告数据</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="grid-stack-item"
+    gs-id="report-summary-core"
+    gs-x="0"
+    gs-y="7"
+    gs-w="4"
+    gs-h="4"
+  >
+    <div class="grid-stack-item-content">
+      <div
+        class="card bg-secondary border-0 shadow-sm h-100 report-card report-card-summary"
+      >
+        <div class="card-header">策略汇总</div>
+        <div class="table-responsive">
+          <table class="table table-dark table-sm mb-0">
+            <tbody id="report-summary-core-body">
+              <tr>
+                <td class="text-muted">状态</td>
+                <td>等待生成报告</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="grid-stack-item"
+    gs-id="report-summary-risk"
+    gs-x="4"
+    gs-y="7"
+    gs-w="4"
+    gs-h="4"
+  >
+    <div class="grid-stack-item-content">
+      <div
+        class="card bg-secondary border-0 shadow-sm h-100 report-card report-card-summary"
+      >
+        <div class="card-header">风险与表现</div>
+        <div class="table-responsive">
+          <table class="table table-dark table-sm mb-0">
+            <tbody id="report-summary-risk-body">
+              <tr>
+                <td class="text-muted">状态</td>
+                <td>等待生成报告</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="grid-stack-item"
+    gs-id="report-structure"
+    gs-x="8"
+    gs-y="7"
+    gs-w="4"
+    gs-h="4"
+  >
+    <div class="grid-stack-item-content">
+      <div
+        class="card bg-secondary border-0 shadow-sm h-100 report-card report-card-summary"
+      >
+        <div class="card-header">结构归因</div>
+        <div class="report-snapshot-grid p-3">
+          <div class="report-snapshot-card">
+            <span class="report-snapshot-label">Long / Short</span>
+            <span id="report-snap-direction-count" class="report-snapshot-value"
+              >-</span
+            >
+          </div>
+          <div class="report-snapshot-card">
+            <span class="report-snapshot-label">Long / Short 收益%</span>
+            <span
+              id="report-snap-direction-profit-pct"
+              class="report-snapshot-value"
+              >-</span
+            >
+          </div>
+          <div class="report-snapshot-card">
+            <span class="report-snapshot-label">Long / Short 收益U</span>
+            <span
+              id="report-snap-direction-profit-abs"
+              class="report-snapshot-value"
+              >-</span
+            >
+          </div>
+          <div class="report-snapshot-card">
+            <span class="report-snapshot-label">平均单笔头寸</span>
+            <span id="report-snap-avg-stake" class="report-snapshot-value"
+              >-</span
+            >
+          </div>
+          <div class="report-snapshot-card report-snapshot-card-wide">
+            <span class="report-snapshot-label">表现最佳交易对</span>
+            <span id="report-snap-best-pair" class="report-snapshot-value"
+              >-</span
+            >
+          </div>
+          <div class="report-snapshot-card report-snapshot-card-wide">
+            <span class="report-snapshot-label">表现最差交易对</span>
+            <span id="report-snap-worst-pair" class="report-snapshot-value"
+              >-</span
+            >
+          </div>
+          <div class="report-snapshot-card report-snapshot-card-wide">
+            <span class="report-snapshot-label">单笔最佳 / 最差交易</span>
+            <span
+              id="report-snap-best-worst-trade"
+              class="report-snapshot-value"
+              >-</span
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="grid-stack-item"
+    gs-id="report-pair"
+    gs-x="0"
+    gs-y="11"
+    gs-w="12"
+    gs-h="5"
+  >
+    <div class="grid-stack-item-content">
+      <div
+        class="card bg-secondary border-0 shadow-sm report-card report-card-pair h-100"
+      >
+        <div
+          class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"
+        >
+          <span>按交易对统计</span>
+          <div
+            id="report-pair-controls"
+            class="d-flex align-items-center gap-2 small"
+          ></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dark table-sm mb-0">
+            <thead>
+              <tr>
+                <th>维度</th>
+                <th class="text-end">交易数</th>
+                <th class="text-end">平均收益%</th>
+                <th class="text-end">累计盈亏</th>
+                <th class="text-end">累计收益%</th>
+                <th class="text-end">平均持仓</th>
+                <th class="text-end">胜/平/负 胜率</th>
+              </tr>
+            </thead>
+            <tbody id="report-pair-body">
+              <tr>
+                <td colspan="7" class="text-center py-3 text-muted">
+                  暂无数据
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="grid-stack-item"
+    gs-id="report-open"
+    gs-x="0"
+    gs-y="16"
+    gs-w="6"
+    gs-h="5"
+  >
+    <div class="grid-stack-item-content">
+      <div
+        class="card bg-secondary border-0 shadow-sm report-card report-card-open h-100"
+      >
+        <div
+          class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"
+        >
+          <span>未平仓参考</span>
+          <div
+            id="report-open-controls"
+            class="d-flex align-items-center gap-2 small"
+          ></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dark table-sm mb-0">
+            <thead>
+              <tr>
+                <th>维度</th>
+                <th class="text-end">交易数</th>
+                <th class="text-end">平均收益%</th>
+                <th class="text-end">累计盈亏</th>
+                <th class="text-end">累计收益%</th>
+                <th class="text-end">平均持仓</th>
+                <th class="text-end">胜/平/负 胜率</th>
+              </tr>
+            </thead>
+            <tbody id="report-open-body">
+              <tr>
+                <td colspan="7" class="text-center py-3 text-muted">
+                  暂无数据
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="grid-stack-item"
+    gs-id="report-enter"
+    gs-x="6"
+    gs-y="16"
+    gs-w="6"
+    gs-h="5"
+  >
+    <div class="grid-stack-item-content">
+      <div
+        class="card bg-secondary border-0 shadow-sm report-card report-card-enter h-100"
+      >
+        <div
+          class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"
+        >
+          <span>按入场标签</span>
+          <div
+            id="report-enter-tag-controls"
+            class="d-flex align-items-center gap-2 small"
+          ></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dark table-sm mb-0">
+            <thead>
+              <tr>
+                <th>维度</th>
+                <th class="text-end">交易数</th>
+                <th class="text-end">平均收益%</th>
+                <th class="text-end">累计盈亏</th>
+                <th class="text-end">累计收益%</th>
+                <th class="text-end">平均持仓</th>
+                <th class="text-end">胜/平/负 胜率</th>
+              </tr>
+            </thead>
+            <tbody id="report-enter-tag-body">
+              <tr>
+                <td colspan="7" class="text-center py-3 text-muted">
+                  暂无数据
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="grid-stack-item"
+    gs-id="report-exit"
+    gs-x="0"
+    gs-y="21"
+    gs-w="6"
+    gs-h="5"
+  >
+    <div class="grid-stack-item-content">
+      <div
+        class="card bg-secondary border-0 shadow-sm report-card report-card-exit h-100"
+      >
+        <div
+          class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"
+        >
+          <span>按卖出原因</span>
+          <div
+            id="report-exit-reason-controls"
+            class="d-flex align-items-center gap-2 small"
+          ></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dark table-sm mb-0">
+            <thead>
+              <tr>
+                <th>维度</th>
+                <th class="text-end">交易数</th>
+                <th class="text-end">平均收益%</th>
+                <th class="text-end">累计盈亏</th>
+                <th class="text-end">累计收益%</th>
+                <th class="text-end">平均持仓</th>
+                <th class="text-end">胜/平/负 胜率</th>
+              </tr>
+            </thead>
+            <tbody id="report-exit-reason-body">
+              <tr>
+                <td colspan="7" class="text-center py-3 text-muted">
+                  暂无数据
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="grid-stack-item"
+    gs-id="report-mix"
+    gs-x="6"
+    gs-y="21"
+    gs-w="6"
+    gs-h="5"
+  >
+    <div class="grid-stack-item-content">
+      <div
+        class="card bg-secondary border-0 shadow-sm report-card report-card-mix h-100"
+      >
+        <div
+          class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"
+        >
+          <span>入场标签 x 卖出原因</span>
+          <div
+            id="report-mix-tag-controls"
+            class="d-flex align-items-center gap-2 small"
+          ></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-dark table-sm mb-0">
+            <thead>
+              <tr>
+                <th>入场标签</th>
+                <th>卖出原因</th>
+                <th class="text-end">交易数</th>
+                <th class="text-end">平均收益%</th>
+                <th class="text-end">累计盈亏</th>
+                <th class="text-end">累计收益%</th>
+                <th class="text-end">平均持仓</th>
+                <th class="text-end">胜/平/负 胜率</th>
+              </tr>
+            </thead>
+            <tbody id="report-mix-tag-body">
+              <tr>
+                <td colspan="8" class="text-center py-3 text-muted">
+                  暂无数据
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="grid-stack-item"
+    gs-id="report-log"
+    gs-x="0"
+    gs-y="26"
+    gs-w="12"
+    gs-h="3"
+  >
+    <div class="grid-stack-item-content">
+      <div
+        id="report-log-widget"
+        class="card bg-secondary border-0 shadow-sm h-100"
+        style="display: none"
+      >
+        <div class="card-header">分析日志</div>
+        <div class="card-body">
+          <pre
+            id="report-grid-log-box"
+            class="mb-0 small text-light"
+            style="white-space: pre-wrap"
+          ></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

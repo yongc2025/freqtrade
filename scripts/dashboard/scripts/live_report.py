@@ -21,9 +21,20 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from pathlib import Path
 
+import pandas as pd
+
+from freqtrade.data.metrics import (
+    calculate_calmar as ft_calculate_calmar,
+    calculate_expectancy as ft_calculate_expectancy,
+    calculate_max_drawdown as ft_calculate_max_drawdown,
+    calculate_sharpe as ft_calculate_sharpe,
+    calculate_sortino as ft_calculate_sortino,
+    calculate_sqn as ft_calculate_sqn,
+)
+
 
 # ─── 配置 ─────────────────────────────────────────────────────────────────────
-DB_PATH = sys.argv[1] if len(sys.argv) > 1 else r"user_data/tradesv3_momentum_live (1).sqlite"
+DB_PATH = sys.argv[1] if len(sys.argv) > 1 else r"user_data/tradesv3_momentum_live.sqlite"
 STARTING_BALANCE = float(sys.argv[2]) if len(sys.argv) > 2 else 1000.0
 OUTPUT_JSON = sys.argv[3] if len(sys.argv) > 3 else "user_data/live_report.json"
 
@@ -43,64 +54,13 @@ def fmt_timedelta(seconds: float) -> str:
     h = int(rem // 3600)
     m = int((rem % 3600) // 60)
     if days > 0:
-        return f"{days} days {h:02d}:{m:02d}:00"
-    return f"{h}:{m:02d}:00"
+        label = "day" if days == 1 else "days"
+        return f"{days} {label}, {h:02d}:{m:02d}:00"
+    return f"{h:02d}:{m:02d}:00"
 
 
 def safe_div(a, b, default=0.0):
     return a / b if b != 0 else default
-
-
-def calc_sortino(daily_profits: list) -> float:
-    """Sortino ratio (annualized, risk-free=0)"""
-    if len(daily_profits) < 2:
-        return 0.0
-    mean = statistics.mean(daily_profits)
-    neg = [x for x in daily_profits if x < 0]
-    if not neg:
-        return 999.0
-    downside_std = math.sqrt(sum(x**2 for x in neg) / len(daily_profits))
-    if downside_std == 0:
-        return 999.0
-    return (mean / downside_std) * math.sqrt(365)
-
-
-def calc_sharpe(daily_profits: list) -> float:
-    """Sharpe ratio (annualized, risk-free=0)"""
-    if len(daily_profits) < 2:
-        return 0.0
-    mean = statistics.mean(daily_profits)
-    std = statistics.stdev(daily_profits)
-    if std == 0:
-        return 999.0
-    return (mean / std) * math.sqrt(365)
-
-
-def calc_calmar(daily_profits: list, total_profit_abs: float, max_dd_abs: float) -> float:
-    if max_dd_abs == 0:
-        return 999.0
-    # CAGR / Max_Drawdown_pct
-    # 简化: 用 total_profit_abs 折算
-    n_days = len(daily_profits) if daily_profits else 1
-    cagr = (1 + total_profit_abs / STARTING_BALANCE) ** (365 / n_days) - 1
-    return safe_div(cagr * 100, max_dd_abs / STARTING_BALANCE * 100)
-
-
-def calc_cagr(profit_abs: float, n_days: int) -> float:
-    if n_days <= 0:
-        return 0.0
-    return ((1 + profit_abs / STARTING_BALANCE) ** (365 / n_days) - 1) * 100
-
-
-def calc_sqn(profits: list) -> float:
-    """System Quality Number = (mean/std) * sqrt(n)"""
-    if len(profits) < 2:
-        return 0.0
-    mean = statistics.mean(profits)
-    std = statistics.stdev(profits)
-    if std == 0:
-        return 0.0
-    return round((mean / std) * math.sqrt(len(profits)), 4)
 
 
 def calc_max_drawdown(equity_curve: list):
@@ -131,6 +91,71 @@ def calc_max_drawdown(equity_curve: list):
     return max_dd, max_dd_pct, dd_start, dd_end, peak_val, trough_val
 
 
+def trades_to_dataframe(trades_list: list) -> pd.DataFrame:
+    if not trades_list:
+        return pd.DataFrame(columns=["close_date", "profit_abs", "profit_ratio", "stake_amount", "is_short"])
+
+    rows = []
+    for trade in trades_list:
+        rows.append(
+            {
+                "close_date": trade["close_date"],
+                "profit_abs": trade["profit_abs"],
+                "profit_ratio": trade["profit_ratio"],
+                "stake_amount": trade["stake_amount"],
+                "is_short": trade["is_short"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_total_row(key: str, trades_list: list, balance: float) -> dict:
+    stats = per_group_stats(trades_list, balance)
+    stats["key"] = key
+    return stats
+
+
+def print_bt_style_table(title: str, rows: list, key_label: str, key_width: int = 22):
+    print(f"\n{title}")
+    print(
+        f"  {key_label:<{key_width}} {'交易次数':>8}  {'平均收益 %':>10}  {'总收益 USDT':>12}  {'总收益 %':>9}  {'平均持仓时间':>18}  {'胜  平  负  胜率%':>18}"
+    )
+    print(
+        f"  {'-' * key_width} {'-' * 8}  {'-' * 10}  {'-' * 12}  {'-' * 9}  {'-' * 18}  {'-' * 18}"
+    )
+    for row in rows:
+        winrate_pct = row["winrate"] * 100 if row.get("trades") else 0
+        wdl = f"{row['wins']:>4} {row['draws']:>4} {row['losses']:>4} {winrate_pct:>6.1f}"
+        print(
+            f"  {str(row['key']):<{key_width}} {row['trades']:>8}  {row['profit_mean_pct']:>10.2f}  "
+            f"{row['profit_total_abs']:>+12.3f}  {row['profit_total_pct']:>9.2f}  {row['duration_avg']:>18}  {wdl:>18}"
+        )
+
+
+def print_mix_tag_table(rows: list):
+    print("\n混合标签 STATS")
+    print(
+        f"  {'入场标签':<22} {'出场原因':<22} {'交易次数':>8}  {'平均收益 %':>10}  {'总收益 USDT':>12}  {'总收益 %':>9}  {'平均持仓时间':>18}  {'胜  平  负  胜率%':>18}"
+    )
+    print(
+        f"  {'-' * 22} {'-' * 22} {'-' * 8}  {'-' * 10}  {'-' * 12}  {'-' * 9}  {'-' * 18}  {'-' * 18}"
+    )
+    for row in rows:
+        winrate_pct = row["winrate"] * 100 if row.get("trades") else 0
+        wdl = f"{row['wins']:>4} {row['draws']:>4} {row['losses']:>4} {winrate_pct:>6.1f}"
+        print(
+            f"  {row['enter_tag']:<22} {row['exit_reason']:<22} {row['trades']:>8}  {row['profit_mean_pct']:>10.2f}  "
+            f"{row['profit_total_abs']:>+12.3f}  {row['profit_total_pct']:>9.2f}  {row['duration_avg']:>18}  {wdl:>18}"
+        )
+
+
+def print_summary_metrics(rows: list):
+    print("\n策略实盘汇总统计 (SUMMARY METRICS)")
+    key_width = max(len(label) for label, _ in rows) + 2
+    for label, value in rows:
+        print(f"  {label:<{key_width}} {value}")
+
+
 def per_group_stats(trades_list: list, balance: float) -> dict:
     """对一组交易计算回测格式的统计指标"""
     if not trades_list:
@@ -144,28 +169,18 @@ def per_group_stats(trades_list: list, balance: float) -> dict:
     gross_loss = sum(abs(t["profit_abs"]) for t in losses)
     total_abs = sum(profits_abs)
     win_rate = safe_div(len(wins), n)
-    avg_win = safe_div(sum(t["profit_ratio"] for t in wins), len(wins)) if wins else 0
-    avg_loss = safe_div(sum(t["profit_ratio"] for t in losses), len(losses)) if losses else 0
-    expectancy = win_rate * avg_win - (1 - win_rate) * abs(avg_loss)
-    expectancy_ratio = safe_div(expectancy, abs(avg_loss)) if avg_loss else 0
-
     durations = [t["duration_s"] for t in trades_list if t["duration_s"] is not None]
     duration_avg_s = statistics.mean(durations) if durations else 0
 
-    # 简单日收益（按开仓日期分组）
-    daily = defaultdict(float)
-    for t in trades_list:
-        if t["close_date"]:
-            day = t["close_date"].date()
-            daily[day] += t["profit_ratio"]
-    daily_list = list(daily.values())
-
-    sharpe = calc_sharpe(daily_list)
-    sortino = calc_sortino(daily_list)
-    n_days = max((max(daily.keys()) - min(daily.keys())).days + 1, 1) if daily else 1
-    cagr = calc_cagr(total_abs, n_days)
-    calmar = safe_div(cagr, safe_div(abs(gross_loss), balance) * 100)
-    sqn = calc_sqn(profits_abs)
+    df = trades_to_dataframe(trades_list)
+    min_date = min((t["open_date"] for t in trades_list if t["open_date"]), default=None)
+    max_date = max((t["close_date"] for t in trades_list if t["close_date"]), default=None)
+    final_balance = balance + total_abs
+    expectancy, expectancy_ratio = ft_calculate_expectancy(df)
+    sharpe = ft_calculate_sharpe(df, min_date, max_date, balance)
+    sortino = ft_calculate_sortino(df, min_date, max_date, balance)
+    calmar = ft_calculate_calmar(df, min_date, max_date, balance)
+    sqn = ft_calculate_sqn(df, balance)
     pf = safe_div(gross_profit, gross_loss)
 
     # max_drawdown within this group
@@ -181,17 +196,17 @@ def per_group_stats(trades_list: list, balance: float) -> dict:
         "profit_total_abs": round(total_abs, 8),
         "profit_total": round(safe_div(total_abs, balance), 8),
         "profit_total_pct": round(safe_div(total_abs, balance) * 100, 2),
-        "duration_avg": fmt_duration(duration_avg_s),
+        "duration_avg": fmt_timedelta(duration_avg_s),
+        "duration_avg_s": duration_avg_s,
         "wins": len(wins),
         "draws": 0,
         "losses": len(losses),
         "winrate": win_rate,
-        "cagr": cagr,
-        "expectancy": expectancy,
-        "expectancy_ratio": expectancy_ratio,
-        "sortino": sortino,
-        "sharpe": sharpe,
-        "calmar": calmar,
+        "expectancy": round(expectancy, 8),
+        "expectancy_ratio": round(expectancy_ratio, 8),
+        "sortino": round(sortino, 4),
+        "sharpe": round(sharpe, 4),
+        "calmar": round(calmar, 4),
         "sqn": sqn,
         "profit_factor": pf,
         "max_drawdown_account": max_dd_pct,
@@ -205,14 +220,13 @@ def main():
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
 
-    # 读取所有已平仓交易
-    c.execute("""
+    base_query = """
         SELECT 
             id, pair, open_date, close_date,
             open_rate, close_rate,
             amount, stake_amount,
-            close_profit        AS profit_ratio,
-            close_profit_abs    AS profit_abs,
+            COALESCE(close_profit, 0)        AS profit_ratio,
+            COALESCE(close_profit_abs, 0)    AS profit_abs,
             exit_reason,
             enter_tag,
             is_short,
@@ -226,10 +240,16 @@ def main():
             stop_loss_pct       AS stop_loss_ratio,
             max_rate, min_rate
         FROM trades
-        WHERE is_open = 0
-        ORDER BY close_date
-    """)
+        WHERE is_open = ?
+        ORDER BY open_date
+    """
+
+    # 读取所有已平仓交易
+    c.execute(base_query, (0,))
     raw_trades = c.fetchall()
+
+    c.execute(base_query, (1,))
+    raw_open_trades = c.fetchall()
 
     # 转换为可操作的 dict 列表
     trades = []
@@ -249,6 +269,38 @@ def main():
             "profit_ratio": r["profit_ratio"],
             "profit_abs": r["profit_abs"],
             "exit_reason": r["exit_reason"],
+            "enter_tag": r["enter_tag"],
+            "is_short": bool(r["is_short"]),
+            "leverage": r["leverage"],
+            "fee_open_cost": r["fee_open_cost"],
+            "fee_close_cost": r["fee_close_cost"],
+            "funding_fees": r["funding_fees"] or 0.0,
+            "initial_stop_loss_abs": r["initial_stop_loss_abs"],
+            "initial_stop_loss_ratio": r["initial_stop_loss_ratio"],
+            "stop_loss_abs": r["stop_loss_abs"],
+            "stop_loss_ratio": r["stop_loss_ratio"],
+            "max_rate": r["max_rate"],
+            "min_rate": r["min_rate"],
+            "duration_s": duration_s,
+        })
+
+    open_trades = []
+    now_utc = datetime.now(timezone.utc)
+    for r in raw_open_trades:
+        open_dt = datetime.fromisoformat(r["open_date"]).replace(tzinfo=timezone.utc) if r["open_date"] else None
+        duration_s = (now_utc - open_dt).total_seconds() if open_dt else 0
+        open_trades.append({
+            "id": r["id"],
+            "pair": r["pair"],
+            "open_date": open_dt,
+            "close_date": None,
+            "open_rate": r["open_rate"],
+            "close_rate": None,
+            "amount": r["amount"],
+            "stake_amount": r["stake_amount"],
+            "profit_ratio": r["profit_ratio"],
+            "profit_abs": r["profit_abs"],
+            "exit_reason": "force_exit",
             "enter_tag": r["enter_tag"],
             "is_short": bool(r["is_short"]),
             "leverage": r["leverage"],
@@ -290,8 +342,6 @@ def main():
             day = t["close_date"].date()
             daily_pnl[day] += t["profit_abs"]
             daily_ratio[day] += t["profit_ratio"]
-    daily_ratio_list = list(daily_ratio.values())
-
     # 时间范围
     first_open = min(t["open_date"] for t in trades)
     last_close = max(t["close_date"] for t in trades)
@@ -330,16 +380,15 @@ def main():
     loss_hold_min = min(loss_durations) if loss_durations else 0
     loss_hold_max = max(loss_durations) if loss_durations else 0
 
-    # 指标
-    avg_win_ratio = safe_div(sum(t["profit_ratio"] for t in wins), len(wins)) if wins else 0
-    avg_loss_ratio = safe_div(sum(t["profit_ratio"] for t in losses), len(losses)) if losses else 0
-    expectancy = win_rate * avg_win_ratio - (1 - win_rate) * abs(avg_loss_ratio)
-    expectancy_ratio = safe_div(expectancy, abs(avg_loss_ratio)) if avg_loss_ratio else 0
-    sharpe = calc_sharpe(daily_ratio_list)
-    sortino = calc_sortino(daily_ratio_list)
-    cagr_val = calc_cagr(total_pnl, n_days)
-    calmar = safe_div(cagr_val, max_dd_pct * 100) if max_dd_pct > 0 else 999.0
-    sqn = calc_sqn(profits_abs)
+    # 指标 - 使用 freqtrade 口径，和回测保持一致
+    trades_df = trades_to_dataframe(trades)
+    min_date = first_open
+    max_date = last_close
+    expectancy, expectancy_ratio = ft_calculate_expectancy(trades_df)
+    sharpe = ft_calculate_sharpe(trades_df, min_date, max_date, STARTING_BALANCE)
+    sortino = ft_calculate_sortino(trades_df, min_date, max_date, STARTING_BALANCE)
+    calmar = ft_calculate_calmar(trades_df, min_date, max_date, STARTING_BALANCE)
+    sqn = ft_calculate_sqn(trades_df, STARTING_BALANCE)
     pf = safe_div(gross_profit, gross_loss)
 
     # 连胜/连败
@@ -363,9 +412,11 @@ def main():
         stats = per_group_stats(ts, STARTING_BALANCE)
         stats["key"] = pair
         results_per_pair.append(stats)
+    results_per_pair.append(build_total_row("TOTAL", trades, STARTING_BALANCE))
 
-    best_pair = max(results_per_pair, key=lambda x: x["profit_total_abs"])
-    worst_pair = min(results_per_pair, key=lambda x: x["profit_total_abs"])
+    pair_only = [x for x in results_per_pair if x["key"] != "TOTAL"]
+    best_pair = max(pair_only, key=lambda x: x["profit_total_abs"])
+    worst_pair = min(pair_only, key=lambda x: x["profit_total_abs"])
 
     # ── results_per_enter_tag ─────────────────────────────────────────────────
     tag_groups = defaultdict(list)
@@ -376,6 +427,7 @@ def main():
         stats = per_group_stats(ts, STARTING_BALANCE)
         stats["key"] = tag
         results_per_enter_tag.append(stats)
+    results_per_enter_tag.append(build_total_row("TOTAL", trades, STARTING_BALANCE))
 
     # ── exit_reason_summary ───────────────────────────────────────────────────
     exit_groups = defaultdict(list)
@@ -386,6 +438,55 @@ def main():
         stats = per_group_stats(ts, STARTING_BALANCE)
         stats["key"] = reason
         exit_reason_summary.append(stats)
+    exit_reason_summary.append(build_total_row("TOTAL", trades, STARTING_BALANCE))
+
+    # ── mix_tag_stats ────────────────────────────────────────────────────────────
+    mix_tag_groups = defaultdict(list)
+    for t in trades:
+        mix_tag_groups[(t["enter_tag"] or "unknown", t["exit_reason"] or "unknown")].append(t)
+    mix_tag_stats = []
+    for (enter_tag, exit_reason), ts in sorted(
+        mix_tag_groups.items(), key=lambda x: -sum(t["profit_abs"] for t in x[1])
+    ):
+        stats = per_group_stats(ts, STARTING_BALANCE)
+        stats["key"] = f"{enter_tag}::{exit_reason}"
+        stats["enter_tag"] = enter_tag
+        stats["exit_reason"] = exit_reason
+        mix_tag_stats.append(stats)
+    total_mix = build_total_row("TOTAL", trades, STARTING_BALANCE)
+    total_mix["enter_tag"] = "TOTAL"
+    total_mix["exit_reason"] = ""
+    mix_tag_stats.append(total_mix)
+
+    left_open_trades = []
+    for trade in open_trades:
+        left_open_trades.append({
+            "pair": trade["pair"],
+            "stake_amount": trade["stake_amount"],
+            "max_stake_amount": trade["stake_amount"],
+            "amount": trade["amount"],
+            "open_date": trade["open_date"].isoformat() if trade["open_date"] else None,
+            "close_date": None,
+            "open_rate": trade["open_rate"],
+            "close_rate": None,
+            "profit_ratio": trade["profit_ratio"],
+            "profit_abs": trade["profit_abs"],
+            "trade_duration": int(trade["duration_s"] / 60) if trade["duration_s"] else 0,
+            "exit_reason": "force_exit",
+            "enter_tag": trade["enter_tag"],
+            "is_open": True,
+            "is_short": trade["is_short"],
+        })
+    left_open_summary = []
+    if open_trades:
+        open_pair_groups = defaultdict(list)
+        for trade in open_trades:
+            open_pair_groups[trade["pair"]].append(trade)
+        for pair, ts in sorted(open_pair_groups.items(), key=lambda x: -sum(t["profit_abs"] for t in x[1])):
+            stats = per_group_stats(ts, STARTING_BALANCE)
+            stats["key"] = pair
+            left_open_summary.append(stats)
+        left_open_summary.append(build_total_row("TOTAL", open_trades, STARTING_BALANCE))
 
     # ── trades list (backtest 格式) ───────────────────────────────────────────
     bt_trades = []
@@ -442,25 +543,26 @@ def main():
         "results_per_pair": results_per_pair,
         "results_per_enter_tag": results_per_enter_tag,
         "exit_reason_summary": exit_reason_summary,
+        "mix_tag_stats": mix_tag_stats,
+        "left_open_trades": left_open_summary,
         "total_trades": n,
         "trade_count_long": len(longs),
         "trade_count_short": len(shorts),
         "total_volume": total_volume,
         "avg_stake_amount": avg_stake,
         "profit_mean": safe_div(sum(profits_ratio), n),
-        "profit_median": sorted(profits_ratio)[n // 2],
+        "profit_median": statistics.median(profits_ratio),
         "profit_total": safe_div(total_pnl, STARTING_BALANCE),
         "profit_total_long": safe_div(sum(t["profit_abs"] for t in longs), STARTING_BALANCE),
         "profit_total_short": safe_div(sum(t["profit_abs"] for t in shorts), STARTING_BALANCE),
         "profit_total_abs": round(total_pnl, 8),
         "profit_total_long_abs": round(sum(t["profit_abs"] for t in longs), 8),
         "profit_total_short_abs": round(sum(t["profit_abs"] for t in shorts), 8),
-        "cagr": cagr_val,
-        "expectancy": expectancy,
-        "expectancy_ratio": expectancy_ratio,
-        "sortino": sortino,
-        "sharpe": sharpe,
-        "calmar": calmar,
+        "expectancy": round(expectancy, 8),
+        "expectancy_ratio": round(expectancy_ratio, 8),
+        "sortino": round(sortino, 8),
+        "sharpe": round(sharpe, 8),
+        "calmar": round(calmar, 8),
         "sqn": sqn,
         "profit_factor": pf,
         "backtest_start": first_open.strftime("%Y-%m-%d %H:%M:%S"),
@@ -484,6 +586,8 @@ def main():
         "draw_days": draw_days,
         "holding_avg": fmt_duration(hold_avg),
         "holding_avg_s": hold_avg,
+        "duration_avg": fmt_timedelta(hold_avg),
+        "duration_avg_s": hold_avg,
         "winner_holding_min": fmt_duration(win_hold_min),
         "winner_holding_min_s": win_hold_min,
         "winner_holding_max": fmt_duration(win_hold_max),
@@ -512,6 +616,9 @@ def main():
         "daily_profit": daily_profit_list,
         "source": "live_database",
         "db_path": DB_PATH,
+        "sample_warning": "Live sample is shorter than 30 days; annualized metrics may be unstable."
+        if n_days < 30
+        else "",
     }
 
     # ── 保存 JSON ─────────────────────────────────────────────────────────────
@@ -522,81 +629,96 @@ def main():
     # ─── 终端输出（与 freqtrade 回测格式对齐） ────────────────────────────────
     SEP = "=" * 70
     print(SEP)
-    print(f"{'실盘分析报告 (Live Trading Report)':^70}")
+    try:
+        print(f"{'实盘分析报告 (Live Trading Report)':^70}")
+    except (UnicodeEncodeError, OSError):
+        print(f"{'Live Trading Report':^70}")
     print(f"  数据库: {DB_PATH}")
     print(f"  分析周期: {first_open.strftime('%Y-%m-%d %H:%M')} → {last_close.strftime('%Y-%m-%d %H:%M')}  ({n_days} 天)")
     print(f"  初始余额: {STARTING_BALANCE:.2f} USDT  →  终止余额: {final_balance:.2f} USDT")
     print(SEP)
 
-    print(f"\n{'─── 核心指标 ─':{'─'}<50}")
-    rows = [
-        ("总交易数",         f"{n}  (多: {len(longs)}  空: {len(shorts)})"),
-        ("胜率",            f"{win_rate * 100:.2f}%  (胜: {len(wins)}  负: {len(losses)})"),
-        ("总 PnL",          f"{total_pnl:+.2f} USDT  ({total_pnl / STARTING_BALANCE * 100:+.2f}%)"),
-        ("Long PnL",        f"{sum(t['profit_abs'] for t in longs):+.2f} USDT"),
-        ("Short PnL",       f"{sum(t['profit_abs'] for t in shorts):+.2f} USDT"),
-        ("CAGR",            f"{cagr_val:.2f}%"),
-        ("Expectancy",      f"{expectancy * 100:.4f}%  (ratio: {expectancy_ratio:.4f})"),
-        ("Sharpe",          f"{sharpe:.4f}"),
-        ("Sortino",         f"{sortino:.4f}"),
-        ("Calmar",          f"{calmar:.4f}"),
-        ("SQN",             f"{sqn:.4f}"),
-        ("Profit Factor",   f"{pf:.4f}"),
-        ("最大回撤",        f"{max_dd_abs:.2f} USDT  ({max_dd_pct * 100:.2f}%)"),
-        ("最佳单日",        f"{best_day[1]:+.2f} USDT  ({best_day[0]})"),
-        ("最差单日",        f"{worst_day[1]:+.2f} USDT  ({worst_day[0]})"),
-        ("盈利天/亏损天",   f"{winning_days} / {losing_days}"),
-        ("平均持仓",        fmt_timedelta(hold_avg)),
-        ("最大连胜/连败",   f"{max_consec_wins} / {max_consec_losses}"),
+    if n_days < 30:
+        print("  [WARN] 实盘样本不足 30 天，Sharpe / Sortino / Calmar 等风险指标会明显失真，解读时请结合样本期长度。")
+
+    print_bt_style_table("策略实盘明细报告 (LIVE REPORT)", results_per_pair, "交易对")
+    if left_open_summary:
+        print_bt_style_table("未平仓交易报告 (LEFT OPEN TRADES REPORT)", left_open_summary, "交易对")
+    else:
+        print("\n未平仓交易报告 (LEFT OPEN TRADES REPORT)")
+        print("  当前无未平仓交易。")
+    print_bt_style_table("入场标签 STATS", results_per_enter_tag, "入场标签", key_width=20)
+    print_bt_style_table("出场原因 STATS", exit_reason_summary, "出场原因", key_width=20)
+    print_mix_tag_table(mix_tag_stats)
+
+    best_trade = max(trades, key=lambda x: x["profit_ratio"])
+    worst_trade = min(trades, key=lambda x: x["profit_ratio"])
+    min_balance = min(equity)
+    max_balance = max(equity)
+    summary_rows = [
+        ("实盘起始时间", first_open.strftime("%Y-%m-%d %H:%M:%S")),
+        ("实盘结束时间", last_close.strftime("%Y-%m-%d %H:%M:%S")),
+        ("Trading Mode", "Isolated Futures"),
+        ("最大并发交易数", 10),
+        ("", ""),
+        ("总计 / 日均交易次数", f"{n} / {round(n / n_days, 2)}"),
+        ("初始账户余额", f"{STARTING_BALANCE:.2f} USDT"),
+        ("最终账户余额", f"{final_balance:.2f} USDT"),
+        ("净利润 (绝对值)", f"{total_pnl:.3f} USDT"),
+        ("总收益率 %", f"{safe_div(total_pnl, STARTING_BALANCE) * 100:.2f}%"),
+        ("索提诺比率 (Sortino)", f"{sortino:.2f}"),
+        ("夏普比率 (Sharpe)", f"{sharpe:.2f}"),
+        ("卡玛比率 (Calmar)", f"{calmar:.2f}"),
+        ("系统获利指标 (SQN)", f"{sqn:.2f}"),
+        ("获利因子 (Profit Factor)", f"{pf:.2f}"),
+        ("交易期望值 (Ratio)", f"{expectancy:.2f} ({expectancy_ratio:.2f})"),
+        ("日均利润", f"{safe_div(total_pnl, n_days):.3f} USDT"),
+        ("平均单笔头寸", f"{avg_stake:.3f} USDT"),
+        ("总交易成交额", f"{total_volume:.3f} USDT"),
+        ("", ""),
+        ("Long / Short trades", f"{len(longs)} / {len(shorts)}"),
+        (
+            "Long / Short profit %",
+            f"{safe_div(sum(t['profit_abs'] for t in longs), STARTING_BALANCE) * 100:.2f}% / {safe_div(sum(t['profit_abs'] for t in shorts), STARTING_BALANCE) * 100:.2f}%",
+        ),
+        (
+            "Long / Short profit USDT",
+            f"{sum(t['profit_abs'] for t in longs):.3f} / {sum(t['profit_abs'] for t in shorts):.3f}",
+        ),
+        ("", ""),
+        ("表现最佳交易对", f"{best_pair['key']} {best_pair['profit_total_pct']:.2f}%"),
+        ("表现最差交易对", f"{worst_pair['key']} {worst_pair['profit_total_pct']:.2f}%"),
+        ("单笔最佳交易", f"{best_trade['pair']} {best_trade['profit_ratio'] * 100:.2f}%"),
+        ("单笔最差交易", f"{worst_trade['pair']} {worst_trade['profit_ratio'] * 100:.2f}%"),
+        ("获利最高日", f"{best_day[1]:.3f} USDT"),
+        ("亏损最高日", f"{worst_day[1]:.3f} USDT"),
+        ("盈利/持平/亏损天数", f"{winning_days} / {draw_days} / {losing_days}"),
+        (
+            "获利单 持仓最短/最长/平均时间",
+            f"{fmt_timedelta(win_hold_min)} / {fmt_timedelta(win_hold_max)} / {fmt_timedelta(win_hold_avg)}",
+        ),
+        (
+            "亏损单 持仓最短/最长/平均时间",
+            f"{fmt_timedelta(loss_hold_min)} / {fmt_timedelta(loss_hold_max)} / {fmt_timedelta(loss_hold_avg)}",
+        ),
+        ("最大连续盈利 / 亏损次数", f"{max_consec_wins} / {max_consec_losses}"),
+        ("被拒绝的入场信号", "N/A"),
+        ("入场/出场超时次数", "N/A / N/A"),
+        ("", ""),
+        ("账户余额最小值", f"{min_balance:.3f} USDT"),
+        ("账户余额最大值", f"{max_balance:.3f} USDT"),
+        ("最大账户回撤率 (Underwater)", f"{max_dd_pct * 100:.2f}%"),
+        ("最大回撤额 (绝对值)", f"{max_dd_abs:.3f} USDT ({max_dd_pct * 100:.2f}%)"),
+        ("回撤持时", f"{fmt_timedelta((dd_end_date - dd_start_date).total_seconds()) if dd_start_date and dd_end_date else 'N/A'}"),
+        ("回撤开始时的利润额", f"{dd_peak - STARTING_BALANCE:.3f} USDT"),
+        ("回撤结束时的利润额", f"{dd_trough - STARTING_BALANCE:.3f} USDT"),
+        ("回撤开始日期", dd_start_date.strftime("%Y-%m-%d %H:%M:%S") if dd_start_date else "N/A"),
+        ("回撤结束日期", dd_end_date.strftime("%Y-%m-%d %H:%M:%S") if dd_end_date else "N/A"),
+        ("市场涨跌幅 (Market Change)", "N/A"),
     ]
-    for label, value in rows:
-        print(f"  {label:<18}: {value}")
+    print_summary_metrics(summary_rows)
 
-    # ── 出场原因 ──────────────────────────────────────────────────────────────
-    print(f"\n{'─── 出场原因 ─':{'─'}<70}")
-    print(f"  {'出场原因':<28} {'笔数':>5}  {'PnL(USDT)':>10}  {'均盈亏%':>8}  {'胜率':>7}  {'PF':>6}")
-    print(f"  {'-'*28} {'-'*5}  {'-'*10}  {'-'*8}  {'-'*7}  {'-'*6}")
-    for s in exit_reason_summary:
-        wr = s["wins"] / s["trades"] * 100 if s["trades"] else 0
-        print(f"  {s['key']:<28} {s['trades']:>5}  {s['profit_total_abs']:>+10.2f}  {s['profit_mean_pct']:>+7.2f}%  {wr:>6.1f}%  {s['profit_factor']:>6.3f}")
-
-    # ── 入场标签 ──────────────────────────────────────────────────────────────
-    print(f"\n{'─── 入场标签 ─':{'─'}<70}")
-    print(f"  {'入场标签':<28} {'笔数':>5}  {'PnL(USDT)':>10}  {'均盈亏%':>8}  {'胜率':>7}  {'期望值':>8}")
-    print(f"  {'-'*28} {'-'*5}  {'-'*10}  {'-'*8}  {'-'*7}  {'-'*8}")
-    for s in results_per_enter_tag:
-        wr = s["wins"] / s["trades"] * 100 if s["trades"] else 0
-        print(f"  {s['key']:<28} {s['trades']:>5}  {s['profit_total_abs']:>+10.2f}  {s['profit_mean_pct']:>+7.2f}%  {wr:>6.1f}%  {s['expectancy']:>+8.5f}")
-
-    # ── 最差币种 Top5 ─────────────────────────────────────────────────────────
-    print(f"\n{'─── 最差币种 Top 5 ─':{'─'}<70}")
-    print(f"  {'币种':<22} {'笔数':>5}  {'PnL(USDT)':>10}  {'均盈亏%':>8}  {'胜率':>7}  {'最大DD':>8}")
-    print(f"  {'-'*22} {'-'*5}  {'-'*10}  {'-'*8}  {'-'*7}  {'-'*8}")
-    worst5 = sorted(results_per_pair, key=lambda x: x["profit_total_abs"])[:5]
-    for s in worst5:
-        wr = s["wins"] / s["trades"] * 100 if s["trades"] else 0
-        print(f"  {s['key']:<22} {s['trades']:>5}  {s['profit_total_abs']:>+10.2f}  {s['profit_mean_pct']:>+7.2f}%  {wr:>6.1f}%  {s['max_drawdown_abs']:>+8.2f}")
-
-    # ── 最佳币种 Top5 ─────────────────────────────────────────────────────────
-    print(f"\n{'─── 最佳币种 Top 5 ─':{'─'}<70}")
-    print(f"  {'币种':<22} {'笔数':>5}  {'PnL(USDT)':>10}  {'均盈亏%':>8}  {'胜率':>7}  {'PF':>6}")
-    print(f"  {'-'*22} {'-'*5}  {'-'*10}  {'-'*8}  {'-'*7}  {'-'*6}")
-    best5 = sorted(results_per_pair, key=lambda x: -x["profit_total_abs"])[:5]
-    for s in best5:
-        wr = s["wins"] / s["trades"] * 100 if s["trades"] else 0
-        print(f"  {s['key']:<22} {s['trades']:>5}  {s['profit_total_abs']:>+10.2f}  {s['profit_mean_pct']:>+7.2f}%  {wr:>6.1f}%  {s['profit_factor']:>6.3f}")
-
-    # ── 按日收益 ──────────────────────────────────────────────────────────────
-    print(f"\n{'─── 每日收益 ─':{'─'}<70}")
-    print(f"  {'日期':<12} {'PnL(USDT)':>12}  {'收益率':>8}  {'笔数':>5}")
-    print(f"  {'-'*12} {'-'*12}  {'-'*8}  {'-'*5}")
-    for day, pnl in sorted(daily_pnl.items()):
-        cnt = sum(1 for t in trades if t["close_date"] and t["close_date"].date() == day)
-        pct = pnl / STARTING_BALANCE * 100
-        flag = "▲" if pnl > 0 else "▼"
-        print(f"  {str(day):<12} {pnl:>+11.2f}  {pct:>+7.2f}%  {cnt:>5}  {flag}")
-
-    print(f"\n  ✅ JSON 报告已保存: {OUTPUT_JSON}")
+    print(f"\n  [OK] JSON 报告已保存: {OUTPUT_JSON}")
     print(SEP)
 
 
