@@ -14,10 +14,12 @@ ROOT = THIS_DIR.parent.parent
 from services.core import TradeService, MarketScanner, LiveReporter
 from routers import trades, analysis
 
-# 配置参数
-DB_PATH = ROOT / "user_data" / "tradesv3_momentum_live_v2.sqlite"
-STARTING_BALANCE = 1000.0
-PORT = 8788
+# 配置参数 - 支持从命令行读取 (例如: python server_new.py db.sqlite 1000 8788)
+DB_NAME = sys.argv[1] if len(sys.argv) > 1 else "tradesv3_momentum_live_v2.sqlite"
+DB_PATH = ROOT / "user_data" / Path(DB_NAME).name
+STARTING_BALANCE = float(sys.argv[2]) if len(sys.argv) > 2 else 1000.0
+PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 8788
+
 LIVE_REPORT_SCRIPT = THIS_DIR / "scripts" / "live_report.py"
 LIVE_REPORT_JSON = ROOT / "user_data" / "live_report.json"
 SCAN_CACHE_FILE = ROOT / "user_data" / "market_scan_cache.json"
