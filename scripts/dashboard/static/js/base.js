@@ -148,6 +148,81 @@ async function initDatabaseSelector() {
   }
 }
 
+function clearAllPageData() {
+  // --- 选币扫描 ---
+  const scanTbody = document.getElementById("scan-tbody");
+  if (scanTbody) scanTbody.innerHTML = "";
+  ["sp-scan", "scan-time", "scan-count"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = "等待刷新";
+  });
+
+  // --- 历史交易 ---
+  const tradesTbody = document.getElementById("trades-tbody");
+  if (tradesTbody) tradesTbody.innerHTML = "";
+  ["ts-total", "ts-pnl", "ts-wr", "ts-avg"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = "-";
+  });
+  ["trade-count"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = "0 笔";
+  });
+
+  // --- 实盘报告 ---
+  [
+    "report-kpi-trades", "report-kpi-pnl", "report-kpi-return",
+    "report-kpi-winrate", "report-kpi-sharpe", "report-kpi-pf",
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = "-"; el.className = "value"; }
+  });
+  const mainMeta = document.getElementById("report-main-meta");
+  if (mainMeta) mainMeta.textContent = "实盘运行时间：等待生成实盘报告";
+  const warningEl = document.getElementById("report-warning");
+  if (warningEl) { warningEl.textContent = ""; warningEl.classList.add("d-none"); }
+
+  // 隐藏日志卡片
+  const logWidget = document.getElementById("report-log-widget");
+  if (logWidget) logWidget.style.display = "none";
+
+  // 清空表格
+  [
+    "report-summary-core-body", "report-summary-risk-body",
+    "report-pair-body", "report-open-body",
+    "report-enter-tag-body", "report-exit-reason-body", "report-mix-tag-body",
+  ].forEach((id) => {
+    const tbody = document.getElementById(id);
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-3 text-muted">等待生成报告</td></tr>';
+  });
+
+  // 清空结构归因
+  [
+    "report-snap-direction-count", "report-snap-direction-profit-pct",
+    "report-snap-direction-profit-abs", "report-snap-avg-stake",
+    "report-snap-best-pair", "report-snap-worst-pair", "report-snap-best-worst-trade",
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = "-"; el.className = "report-snapshot-value"; }
+  });
+
+  // 销毁权益曲线图
+  if (typeof _equityChart !== "undefined" && _equityChart) {
+    _equityChart.dispose();
+    _equityChart = null;
+  }
+  const eqChart = document.getElementById("report-equity-chart");
+  if (eqChart) eqChart.innerHTML = '<div class="text-secondary small">等待实盘报告数据</div>';
+  ["report-equity-current", "report-equity-peak"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = "-";
+  });
+  const ddEl = document.getElementById("report-equity-drawdown");
+  if (ddEl) { ddEl.textContent = "-"; ddEl.className = "report-equity-value"; }
+  const eqMeta = document.getElementById("report-equity-meta");
+  if (eqMeta) eqMeta.textContent = "等待生成资金曲线";
+}
+
 async function switchDatabase(dbName) {
   if (!dbName) return;
   const balanceInput = document.getElementById("balance-input");
@@ -174,6 +249,9 @@ async function switchDatabase(dbName) {
     const activePage =
       document.querySelector(".page.active")?.id.replace("page-", "") ||
       "scan";
+
+    // 清空所有页面的旧数据，避免用户误以为是新数据库的结果
+    clearAllPageData();
 
     // 非报告页面正常刷新数据
     if (activePage === "scan" && typeof loadScanData === "function") {
