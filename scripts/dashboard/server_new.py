@@ -76,15 +76,22 @@ async def get_report_data():
     return {"status": reporter.status, "data": reporter.data, "updated_at": reporter.updated_at}
 
 @app.post("/api/live-report/run")
-async def run_report(bg: BackgroundTasks):
-    # 强制重新获取最新的余额
-    current_balance = getattr(app.state, "starting_balance", STARTING_BALANCE)
+async def run_report(bg: BackgroundTasks, starting_balance: Optional[float] = Query(None)):
+    # 【终极修复】如果在执行请求时显式传了余额，则直接使用它
+    current_balance = starting_balance
     
-    # 【核心修复】强制让 reporter 的路径与 trade_service 同步
-    # 确保之前在 config.py 里的修改被物理应用到分析任务中
+    # 如果请求里没带，再从 app.state 里找 UI 切换时保存的值
+    if current_balance is None:
+        current_balance = getattr(app.state, "starting_balance", None)
+    
+    # 最后才回退到启动参数
+    if current_balance is None:
+        current_balance = STARTING_BALANCE
+    
+    # 强制让 reporter 的路径与 trade_service 同步
     app.state.reporter.db_path = app.state.trade_service.db_path
     
-    print(f"[CRITICAL] Running analysis: DB={app.state.reporter.db_path}, Balance={current_balance}")
+    print(f"[FINAL FIX] Running analysis: DB={app.state.reporter.db_path}, Balance={current_balance}")
     
     bg.add_task(app.state.reporter.run_analysis, current_balance)
     return {"message": "started", "balance": current_balance, "db": str(app.state.reporter.db_path)}

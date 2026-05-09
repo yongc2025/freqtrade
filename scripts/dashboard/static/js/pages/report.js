@@ -1501,16 +1501,25 @@
     initReportGrid();
     const btn = document.getElementById("btn-report");
     if (btn) btn.disabled = true;
+
+    // 【核心修复】获取当前界面上的金额
+    const balanceInput = document.getElementById("balance-input");
+    const balance = balanceInput ? balanceInput.value : "";
+
     const logCard = document.getElementById("log-card");
     const logBox = document.getElementById("log-box");
     if (logCard) logCard.style.display = "";
-    if (logBox) logBox.textContent = "正在启动分析...\n";
+    if (logBox)
+      logBox.textContent = `正在启动分析 (金额: ${balance || "默认"})...\n`;
     syncReportLogTargets();
 
     setStatus("sp-report", "running", "运行中...");
 
     try {
-      await fetch("/api/live-report/run", { method: "POST" });
+      // 通过 URL 参数发送余额，强制覆盖后端所有缓存
+      await fetch(`/api/live-report/run?starting_balance=${balance}`, {
+        method: "POST",
+      });
       _reportPoll = setInterval(async () => {
         const s = await fetch("/api/live-report/status").then((r) => r.json());
         if (s.log && logBox) logBox.textContent = s.log;

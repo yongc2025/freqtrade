@@ -68,6 +68,8 @@ async def switch_database(request: Request, db_name: str, starting_balance: floa
     # 更新余额状态
     if starting_balance is not None:
         request.app.state.starting_balance = starting_balance
+        # 强制将新的余额写回全局 state，确保 server_new.py 中的 STARTING_BALANCE 被覆盖
+        setattr(request.app.state, "starting_balance", starting_balance)
     
     # 更新全局服务状态
     request.app.state.trade_service.db_path = db_path
