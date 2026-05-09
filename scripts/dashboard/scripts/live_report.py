@@ -348,10 +348,12 @@ def main():
     n_days = max((last_close.date() - first_open.date()).days + 1, 1)
 
     # 权益曲线 (按 close_date 排序)
-    equity = [STARTING_BALANCE]
+    current_equity = STARTING_BALANCE
+    equity = [current_equity]
     sorted_trades = sorted(trades, key=lambda x: x["close_date"])
     for t in sorted_trades:
-        equity.append(equity[-1] + t["profit_abs"])
+        current_equity += t["profit_abs"]
+        equity.append(current_equity)
     final_balance = equity[-1]
 
     max_dd_abs, max_dd_pct, dd_start_idx, dd_end_idx, dd_peak, dd_trough = calc_max_drawdown(equity[1:])

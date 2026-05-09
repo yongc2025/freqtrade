@@ -77,8 +77,13 @@ async def get_report_data():
 
 @app.post("/api/live-report/run")
 async def run_report(bg: BackgroundTasks):
-    # 动态获取当前余额，如果 state 里没有则回退到脚本启动参数
+    # 强制重新从 app.state 获取最新的余额
     current_balance = getattr(app.state, "starting_balance", STARTING_BALANCE)
+    
+    # 调试日志：打印当前使用的余额和数据库
+    db_name = getattr(app.state.reporter.db_path, "name", "unknown")
+    print(f"[Dashboard] Triggering report run. Balanced used: {current_balance}, DB: {db_name}")
+    
     bg.add_task(app.state.reporter.run_analysis, current_balance)
     return {"message": "started", "balance": current_balance}
 
