@@ -1173,9 +1173,11 @@
 
     if (!_equityChart) {
       host.innerHTML = "";
-      // 如果容器尺寸为 0（grid-stack 未完成布局），延迟初始化
+      // 如果容器尺寸为 0（grid-stack 未完成布局），轮询等待
       if (host.offsetWidth === 0 || host.offsetHeight === 0) {
-        setTimeout(() => {
+        let retries = 0;
+        const tryInit = () => {
+          retries++;
           if (host.offsetWidth > 0 && host.offsetHeight > 0) {
             host.innerHTML = "";
             _equityChart = echarts.init(host, null, { renderer: "canvas" });
@@ -1186,8 +1188,11 @@
             const mkData = drawdownAbs < 0 && peakIndex < points.length - 1
               ? [[{ xAxis: catData[peakIndex] }, { xAxis: catData[catData.length - 1] }]] : [];
             _applyChartOptions(points, catData, pkData, eqData, drawdownGap, peakIndex, drawdownAbs, currentEquity, peakEquity, mkData);
+          } else if (retries < 10) {
+            setTimeout(tryInit, 200);
           }
-        }, 300);
+        };
+        setTimeout(tryInit, 200);
         return;
       }
       _equityChart = echarts.init(host, null, { renderer: "canvas" });

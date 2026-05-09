@@ -206,13 +206,8 @@ function clearAllPageData() {
     if (el) { el.textContent = "-"; el.className = "report-snapshot-value"; }
   });
 
-  // 销毁权益曲线图
-  if (typeof _equityChart !== "undefined" && _equityChart) {
-    _equityChart.dispose();
-    _equityChart = null;
-  }
-  const eqChart = document.getElementById("report-equity-chart");
-  if (eqChart) eqChart.innerHTML = '<div class="text-secondary small">等待实盘报告数据</div>';
+  // 权益曲线图 — 不清除容器（echarts 实例在 report.js 闭包中，此处无法 dispose）
+  // 由 renderEquityChart 自行处理：用 setOption(notMerge) 覆盖旧数据
   ["report-equity-current", "report-equity-peak"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.textContent = "-";
