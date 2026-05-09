@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Optional
 from fastapi import FastAPI, BackgroundTasks, Query, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
