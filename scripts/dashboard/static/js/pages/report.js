@@ -1173,15 +1173,27 @@
 
     if (!_equityChart) {
       host.innerHTML = "";
+      // 如果容器尺寸为 0（grid-stack 未完成布局），延迟初始化
+      if (host.offsetWidth === 0 || host.offsetHeight === 0) {
+        setTimeout(() => {
+          if (host.offsetWidth > 0 && host.offsetHeight > 0) {
+            host.innerHTML = "";
+            _equityChart = echarts.init(host, null, { renderer: "canvas" });
+            _bindEquityResize();
+            const catData = points.map((p) => p.label);
+            const pkData = points.map((p) => p.peak);
+            const eqData = points.map((p) => p.equity);
+            const mkData = drawdownAbs < 0 && peakIndex < points.length - 1
+              ? [[{ xAxis: catData[peakIndex] }, { xAxis: catData[catData.length - 1] }]] : [];
+            _applyChartOptions(points, catData, pkData, eqData, drawdownGap, peakIndex, drawdownAbs, currentEquity, peakEquity, mkData);
+          }
+        }, 300);
+        return;
+      }
       _equityChart = echarts.init(host, null, { renderer: "canvas" });
     }
 
-    if (!_equityResizeBound) {
-      window.addEventListener("resize", () => {
-        if (_equityChart) _equityChart.resize();
-      });
-      _equityResizeBound = true;
-    }
+    _bindEquityResize();
 
     const categoryData = points.map((point) => point.label);
     const peakData = points.map((point) => point.peak);
@@ -1196,6 +1208,20 @@
           ]
         : [];
 
+    _applyChartOptions(points, categoryData, peakData, equityData, drawdownGap, peakIndex, drawdownAbs, currentEquity, peakEquity, markAreaData);
+  }
+
+  function _bindEquityResize() {
+    if (!_equityResizeBound) {
+      window.addEventListener("resize", () => {
+        if (_equityChart) _equityChart.resize();
+      });
+      _equityResizeBound = true;
+    }
+  }
+
+  function _applyChartOptions(points, categoryData, peakData, equityData, drawdownGap, peakIndex, drawdownAbs, currentEquity, peakEquity, markAreaData) {
+    if (!_equityChart) return;
     _equityChart.setOption(
       {
         animation: false,
@@ -1611,7 +1637,16 @@
     );
     renderEquityChart(d);
     syncReportLogTargets();
+
+    // 确保日志卡片在报告渲染后保持可见（clearAllPageData 可能已隐藏它）
+    const logWidget = document.getElementById("report-log-widget");
+    if (logWidget) logWidget.style.display = "";
+
     queueReportGridRefresh();
+    // grid-stack 布局稳定后，强制图表重新计算尺寸
+    requestAnimationFrame(() => {
+      if (_equityChart) _equityChart.resize();
+    });
   }
 
   async function loadCompareData() {
