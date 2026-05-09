@@ -77,15 +77,18 @@ async def get_report_data():
 
 @app.post("/api/live-report/run")
 async def run_report(bg: BackgroundTasks):
-    # 强制重新从 app.state 获取最新的余额
+    # 强制重新从 app.state 获取最新的余额和数据库路径
     current_balance = getattr(app.state, "starting_balance", STARTING_BALANCE)
+    current_db_path = app.state.trade_service.db_path
     
     # 调试日志：打印当前使用的余额和数据库
-    db_name = getattr(app.state.reporter.db_path, "name", "unknown")
-    print(f"[Dashboard] Triggering report run. Balanced used: {current_balance}, DB: {db_name}")
+    print(f"[Dashboard] Triggering report run. Balanced used: {current_balance}, DB: {current_db_path}")
+    
+    # 强制同步 reporter 的属性，防止后台任务执行时引用到旧的初始值
+    app.state.reporter.db_path = current_db_path
     
     bg.add_task(app.state.reporter.run_analysis, current_balance)
-    return {"message": "started", "balance": current_balance}
+    return {"message": "started", "balance": current_balance, "db": str(current_db_path)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=PORT)

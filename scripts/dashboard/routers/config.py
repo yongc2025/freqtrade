@@ -71,10 +71,16 @@ async def switch_database(request: Request, db_name: str, starting_balance: floa
     
     # 更新全局服务状态
     request.app.state.trade_service.db_path = db_path
+    # 确保 reporter 的 db_path 也被物理更新
     request.app.state.reporter.db_path = db_path
     
-    # 强制清理 reporter 的旧缓存数据，确保下次生成的报告是基于新参数的
+    # 彻底清理旧数据
     request.app.state.reporter.data = None
+    if request.app.state.reporter.output_json.exists():
+        try:
+            request.app.state.reporter.output_json.unlink()
+        except:
+            pass
     
     return {
         "message": f"Switched to {db_name}", 
