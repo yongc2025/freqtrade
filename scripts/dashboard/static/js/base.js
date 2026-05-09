@@ -125,7 +125,6 @@ async function showPage(pageId, linkEl) {
 
 async function initDatabaseSelector() {
   const selector = document.getElementById("db-selector");
-  const balanceInput = document.getElementById("balance-input");
   if (!selector) return;
 
   try {
@@ -142,10 +141,7 @@ async function initDatabaseSelector() {
       option.selected = db === currentData.current_db;
       selector.appendChild(option);
     });
-
-    if (balanceInput && currentData.starting_balance) {
-      balanceInput.value = currentData.starting_balance;
-    }
+    // 金额输入框保持 HTML 默认值，由用户自行调整
   } catch (error) {
     console.error("Failed to init database selector:", error);
     selector.innerHTML = '<option value="">加载失败</option>';
@@ -159,9 +155,7 @@ async function switchDatabase(dbName) {
 
   try {
     let url = `/api/config/switch-db?db_name=${encodeURIComponent(dbName)}`;
-    if (balance) url += `&starting_balance=${balance}`;
-
-    // 【修复1】必须 await — 确保后端完成切换后再加载数据
+    // 只传 db_name，不传 starting_balance — 金额由用户自行决定
     const response = await fetch(url, { method: "POST" });
     if (!response.ok) {
       const err = await response.json();
@@ -170,9 +164,9 @@ async function switchDatabase(dbName) {
     }
 
     const result = await response.json();
-    console.log(`[DB Switch] ${result.message}, balance=${result.starting_balance}`);
+    console.log(`[DB Switch] ${result.message}`);
 
-    // 切换成功后，重置所有页面加载标记
+    // 重置页面加载标记，让下次进入页面时重新加载数据
     Object.keys(DashState.loadedPages).forEach((key) => {
       DashState.loadedPages[key] = false;
     });
@@ -181,24 +175,33 @@ async function switchDatabase(dbName) {
       document.querySelector(".page.active")?.id.replace("page-", "") ||
       "scan";
 
-    // 【修复2】根据不同页面执行正确的刷新策略
+    // 非报告页面正常刷新数据
     if (activePage === "scan" && typeof loadScanData === "function") {
       loadScanData();
     }
     if (activePage === "trades" && typeof loadTrades === "function") {
       loadTrades();
     }
-    if (activePage === "report") {
-      // 【修复3】切换数据库后，必须重新运行实盘分析（而不是加载旧缓存）
-      // 因为旧报告是用旧数据库+旧金额生成的，直接 loadReportData 只会显示旧数据
-      if (typeof runReport === "function") {
-        runReport();
-      } else if (typeof loadReportData === "function") {
-        loadReportData();
-      }
-    }
     if (activePage === "compare" && typeof loadCompareData === "function") {
       loadCompareData();
+    }
+
+    // 报告页面：只提示切换成功，不自动跑分析
+    if (activePage === "report") {
+      const statusEl = document.getElementById("sp-report");
+      if (statusEl) {
+        statusEl.textContent = "已切换";
+        statusEl.className = "status-chip-text text-info";
+      }
+      const logWidget = document.getElementById("report-log-widget");
+      const logBox = document.getElementById("report-grid-log-box");
+      if (logWidget) logWidget.style.display = "";
+      if (logBox) {
+        logBox.textContent =
+          `✅ 已切换数据库: ${dbName}\n` +
+          `💰 当前金额: ${balanceInput ? balanceInput.value : "-"} USDT\n\n` +
+          `请确认金额无误后，点击「生成报告」开始分析。`;
+      }
     }
 
     DashState.loadedPages[activePage] = true;
