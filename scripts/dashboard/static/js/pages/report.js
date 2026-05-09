@@ -374,13 +374,18 @@
   }
 
   function syncReportLogTargets() {
-    const legacyCard = document.getElementById("log-card");
-    const legacyBox = document.getElementById("log-box");
-    const gridCard = document.getElementById("report-log-widget");
-    const gridBox = document.getElementById("report-grid-log-box");
-    if (!legacyCard || !legacyBox || !gridCard || !gridBox) return;
-    gridCard.style.display = legacyCard.style.display;
-    gridBox.textContent = legacyBox.textContent;
+    // Log is now only in the grid widget — nothing to sync
+  }
+
+  function toggleReportLog() {
+    const body = document.getElementById("report-log-body");
+    const icon = document.getElementById("report-log-toggle-icon");
+    if (!body || !icon) return;
+    const collapsed = body.style.display === "none";
+    body.style.display = collapsed ? "" : "none";
+    icon.className = collapsed
+      ? "bi bi-chevron-up"
+      : "bi bi-chevron-down";
   }
 
   function pos(v) {
@@ -1506,9 +1511,11 @@
     const balanceInput = document.getElementById("balance-input");
     const balance = balanceInput ? balanceInput.value : "";
 
-    const logCard = document.getElementById("log-card");
-    const logBox = document.getElementById("log-box");
+    const logCard = document.getElementById("report-log-widget");
+    const logBox = document.getElementById("report-grid-log-box");
+    const logBody = document.getElementById("report-log-body");
     if (logCard) logCard.style.display = "";
+    if (logBody) logBody.style.display = "";
     if (logBox)
       logBox.textContent = `正在启动分析 (金额: ${balance || "默认"})...\n`;
     syncReportLogTargets();
@@ -1861,4 +1868,5 @@
   };
   window.changeReportSectionPage = changeReportSectionPage;
   window.toggleReportSection = toggleReportSection;
+  window.toggleReportLog = toggleReportLog;
 })();
