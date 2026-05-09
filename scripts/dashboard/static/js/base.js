@@ -182,9 +182,9 @@ function clearAllPageData() {
   const warningEl = document.getElementById("report-warning");
   if (warningEl) { warningEl.textContent = ""; warningEl.classList.add("d-none"); }
 
-  // 隐藏日志卡片
-  const logWidget = document.getElementById("report-log-widget");
-  if (logWidget) logWidget.style.display = "none";
+  // 隐藏分析日志（顶部 log-card）
+  const logCard = document.getElementById("log-card");
+  if (logCard) logCard.style.display = "none";
 
   // 清空表格
   [

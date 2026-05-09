@@ -374,11 +374,17 @@
   }
 
   function syncReportLogTargets() {
-    // Log is now only in the grid widget — nothing to sync
+    const legacyCard = document.getElementById("log-card");
+    const legacyBox = document.getElementById("log-box");
+    const gridCard = document.getElementById("report-log-widget");
+    const gridBox = document.getElementById("report-grid-log-box");
+    if (!legacyCard || !legacyBox || !gridCard || !gridBox) return;
+    gridCard.style.display = legacyCard.style.display;
+    gridBox.textContent = legacyBox.textContent;
   }
 
   function toggleReportLog() {
-    const body = document.getElementById("report-log-body");
+    const body = document.getElementById("log-card-body");
     const icon = document.getElementById("report-log-toggle-icon");
     if (!body || !icon) return;
     const collapsed = body.style.display === "none";
@@ -1173,32 +1179,15 @@
 
     if (!_equityChart) {
       host.innerHTML = "";
-      // 如果容器尺寸为 0（grid-stack 未完成布局），轮询等待
-      if (host.offsetWidth === 0 || host.offsetHeight === 0) {
-        let retries = 0;
-        const tryInit = () => {
-          retries++;
-          if (host.offsetWidth > 0 && host.offsetHeight > 0) {
-            host.innerHTML = "";
-            _equityChart = echarts.init(host, null, { renderer: "canvas" });
-            _bindEquityResize();
-            const catData = points.map((p) => p.label);
-            const pkData = points.map((p) => p.peak);
-            const eqData = points.map((p) => p.equity);
-            const mkData = drawdownAbs < 0 && peakIndex < points.length - 1
-              ? [[{ xAxis: catData[peakIndex] }, { xAxis: catData[catData.length - 1] }]] : [];
-            _applyChartOptions(points, catData, pkData, eqData, drawdownGap, peakIndex, drawdownAbs, currentEquity, peakEquity, mkData);
-          } else if (retries < 10) {
-            setTimeout(tryInit, 200);
-          }
-        };
-        setTimeout(tryInit, 200);
-        return;
-      }
       _equityChart = echarts.init(host, null, { renderer: "canvas" });
     }
 
-    _bindEquityResize();
+    if (!_equityResizeBound) {
+      window.addEventListener("resize", () => {
+        if (_equityChart) _equityChart.resize();
+      });
+      _equityResizeBound = true;
+    }
 
     const categoryData = points.map((point) => point.label);
     const peakData = points.map((point) => point.peak);
@@ -1213,20 +1202,6 @@
           ]
         : [];
 
-    _applyChartOptions(points, categoryData, peakData, equityData, drawdownGap, peakIndex, drawdownAbs, currentEquity, peakEquity, markAreaData);
-  }
-
-  function _bindEquityResize() {
-    if (!_equityResizeBound) {
-      window.addEventListener("resize", () => {
-        if (_equityChart) _equityChart.resize();
-      });
-      _equityResizeBound = true;
-    }
-  }
-
-  function _applyChartOptions(points, categoryData, peakData, equityData, drawdownGap, peakIndex, drawdownAbs, currentEquity, peakEquity, markAreaData) {
-    if (!_equityChart) return;
     _equityChart.setOption(
       {
         animation: false,
@@ -1542,11 +1517,14 @@
     const balanceInput = document.getElementById("balance-input");
     const balance = balanceInput ? balanceInput.value : "";
 
-    const logCard = document.getElementById("report-log-widget");
-    const logBox = document.getElementById("report-grid-log-box");
-    const logBody = document.getElementById("report-log-body");
+    const logCard = document.getElementById("log-card");
+    const logBox = document.getElementById("log-box");
+    const logBody = document.getElementById("log-card-body");
     if (logCard) logCard.style.display = "";
     if (logBody) logBody.style.display = "";
+    // 重置折叠按钮图标
+    const logIcon = document.getElementById("report-log-toggle-icon");
+    if (logIcon) logIcon.className = "bi bi-chevron-up";
     if (logBox)
       logBox.textContent = `正在启动分析 (金额: ${balance || "默认"})...\n`;
     syncReportLogTargets();
@@ -1642,16 +1620,7 @@
     );
     renderEquityChart(d);
     syncReportLogTargets();
-
-    // 确保日志卡片在报告渲染后保持可见（clearAllPageData 可能已隐藏它）
-    const logWidget = document.getElementById("report-log-widget");
-    if (logWidget) logWidget.style.display = "";
-
     queueReportGridRefresh();
-    // grid-stack 布局稳定后，强制图表重新计算尺寸
-    requestAnimationFrame(() => {
-      if (_equityChart) _equityChart.resize();
-    });
   }
 
   async function loadCompareData() {
