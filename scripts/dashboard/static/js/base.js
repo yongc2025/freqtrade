@@ -125,6 +125,7 @@ async function showPage(pageId, linkEl) {
 
 async function initDatabaseSelector() {
   const selector = document.getElementById("db-selector");
+  const balanceInput = document.getElementById("balance-input");
   if (!selector) return;
 
   try {
@@ -141,6 +142,10 @@ async function initDatabaseSelector() {
       option.selected = db === currentData.current_db;
       selector.appendChild(option);
     });
+
+    if (balanceInput && currentData.starting_balance) {
+      balanceInput.value = currentData.starting_balance;
+    }
   } catch (error) {
     console.error("Failed to init database selector:", error);
     selector.innerHTML = '<option value="">加载失败</option>';
@@ -149,14 +154,16 @@ async function initDatabaseSelector() {
 
 async function switchDatabase(dbName) {
   if (!dbName) return;
+  const balanceInput = document.getElementById("balance-input");
+  const balance = balanceInput ? balanceInput.value : null;
 
   try {
-    const response = await fetch(
-      `/api/config/switch-db?db_name=${encodeURIComponent(dbName)}`,
-      {
-        method: "POST",
-      },
-    );
+    let url = `/api/config/switch-db?db_name=${encodeURIComponent(dbName)}`;
+    if (balance) url += `&starting_balance=${balance}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+    });
     if (response.ok) {
       // 切换成功后，更新 DashState 中的标记，让页面重新加载
       Object.keys(DashState.loadedPages).forEach((key) => {

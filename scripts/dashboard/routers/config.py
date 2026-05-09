@@ -40,13 +40,14 @@ async def list_databases(request: Request):
 
 @router.get("/current-db")
 async def get_current_db(request: Request):
-    """获取当前正在使用的数据库文件名"""
+    """获取当前正在使用的数据库文件名及初始余额"""
     db_path = request.app.state.trade_service.db_path
-    return {"current_db": db_path.name}
+    balance = getattr(request.app.state, "starting_balance", 1000.0)
+    return {"current_db": db_path.name, "starting_balance": balance}
 
 @router.post("/switch-db")
-async def switch_database(request: Request, db_name: str):
-    """切换当前使用的数据库文件，同时支持两种环境"""
+async def switch_database(request: Request, db_name: str, starting_balance: float = None):
+    """切换当前使用的数据库文件，并支持更新初始余额"""
     from pathlib import Path
     
     candidates = [
@@ -64,8 +65,16 @@ async def switch_database(request: Request, db_name: str):
     if not db_path:
         raise HTTPException(status_code=404, detail=f"Database {db_name} not found")
     
+    # 更新余额状态
+    if starting_balance is not None:
+        request.app.state.starting_balance = starting_balance
+    
     # 更新全局服务状态
     request.app.state.trade_service.db_path = db_path
     request.app.state.reporter.db_path = db_path
     
-    return {"message": f"Switched to {db_name}", "path": str(db_path)}
+    return {
+        "message": f"Switched to {db_name}", 
+        "path": str(db_path),
+        "starting_balance": getattr(request.app.state, "starting_balance", 1000.0)
+    }

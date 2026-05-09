@@ -33,6 +33,7 @@ app = FastAPI(title="FreqTrade Dashboard")
 app.state.trade_service = trade_service
 app.state.scanner = scanner
 app.state.reporter = reporter
+app.state.starting_balance = STARTING_BALANCE
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -76,8 +77,9 @@ async def get_report_data():
 
 @app.post("/api/live-report/run")
 async def run_report(bg: BackgroundTasks):
-    bg.add_task(reporter.run_analysis, STARTING_BALANCE)
-    return {"message": "started"}
+    current_balance = getattr(app.state, "starting_balance", STARTING_BALANCE)
+    bg.add_task(reporter.run_analysis, current_balance)
+    return {"message": "started", "balance": current_balance}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=PORT)
