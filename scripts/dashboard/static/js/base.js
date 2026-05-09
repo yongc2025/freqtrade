@@ -161,32 +161,47 @@ async function switchDatabase(dbName) {
     let url = `/api/config/switch-db?db_name=${encodeURIComponent(dbName)}`;
     if (balance) url += `&starting_balance=${balance}`;
 
-    const response = await fetch(url, {
-      method: "POST",
-    });
-    if (response.ok) {
-      // 切换成功后，更新 DashState 中的标记，让页面重新加载
-      Object.keys(DashState.loadedPages).forEach((key) => {
-        DashState.loadedPages[key] = false;
-      });
-
-      const activePage =
-        document.querySelector(".page.active")?.id.replace("page-", "") ||
-        "scan";
-
-      // 核心：强制重新执行当前页面的加载函数
-      if (activePage === "scan" && typeof loadScanData === "function")
-        loadScanData();
-      if (activePage === "trades" && typeof loadTrades === "function")
-        loadTrades();
-      if (activePage === "report" && typeof loadReportData === "function")
-        loadReportData();
-
-      DashState.loadedPages[activePage] = true;
-    } else {
+    // 【修复1】必须 await — 确保后端完成切换后再加载数据
+    const response = await fetch(url, { method: "POST" });
+    if (!response.ok) {
       const err = await response.json();
       alert(`切换失败: ${err.detail}`);
+      return;
     }
+
+    const result = await response.json();
+    console.log(`[DB Switch] ${result.message}, balance=${result.starting_balance}`);
+
+    // 切换成功后，重置所有页面加载标记
+    Object.keys(DashState.loadedPages).forEach((key) => {
+      DashState.loadedPages[key] = false;
+    });
+
+    const activePage =
+      document.querySelector(".page.active")?.id.replace("page-", "") ||
+      "scan";
+
+    // 【修复2】根据不同页面执行正确的刷新策略
+    if (activePage === "scan" && typeof loadScanData === "function") {
+      loadScanData();
+    }
+    if (activePage === "trades" && typeof loadTrades === "function") {
+      loadTrades();
+    }
+    if (activePage === "report") {
+      // 【修复3】切换数据库后，必须重新运行实盘分析（而不是加载旧缓存）
+      // 因为旧报告是用旧数据库+旧金额生成的，直接 loadReportData 只会显示旧数据
+      if (typeof runReport === "function") {
+        runReport();
+      } else if (typeof loadReportData === "function") {
+        loadReportData();
+      }
+    }
+    if (activePage === "compare" && typeof loadCompareData === "function") {
+      loadCompareData();
+    }
+
+    DashState.loadedPages[activePage] = true;
   } catch (error) {
     console.error("Switch database error:", error);
     alert("切换数据库请求失败");
