@@ -123,7 +123,59 @@ async function showPage(pageId, linkEl) {
   }
 }
 
+async function initDatabaseSelector() {
+  const selector = document.getElementById("db-selector");
+  if (!selector) return;
+
+  try {
+    const listResp = await fetch("/api/config/databases");
+    const listData = await listResp.json();
+    const currentResp = await fetch("/api/config/current-db");
+    const currentData = await currentResp.json();
+
+    selector.innerHTML = "";
+    listData.databases.forEach((db) => {
+      const option = document.createElement("option");
+      option.value = db;
+      option.textContent = db;
+      option.selected = db === currentData.current_db;
+      selector.appendChild(option);
+    });
+  } catch (error) {
+    console.error("Failed to init database selector:", error);
+    selector.innerHTML = '<option value="">加载失败</option>';
+  }
+}
+
+async function switchDatabase(dbName) {
+  if (!dbName) return;
+
+  try {
+    const response = await fetch(`/api/config/switch-db?db_name=${dbName}`, {
+      method: "POST",
+    });
+    if (response.ok) {
+      // 切换成功后，重置已加载标记并重新加载当前页面
+      Object.keys(DashState.loadedPages).forEach((key) => {
+        DashState.loadedPages[key] = false;
+      });
+
+      const activePage =
+        document.querySelector(".page.active")?.id.replace("page-", "") ||
+        "scan";
+      ensurePageLoaded(activePage);
+    } else {
+      const err = await response.json();
+      alert(`切换失败: ${err.detail}`);
+    }
+  } catch (error) {
+    console.error("Switch database error:", error);
+    alert("切换数据库请求失败");
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  initDatabaseSelector();
   showPage("scan", document.querySelector('.nav-link[data-page="scan"]'));
 
   ["report", "compare"].forEach((pageId) => {
@@ -138,3 +190,4 @@ window.setStatus = setStatus;
 window.showPage = showPage;
 window.ensurePageLoaded = ensurePageLoaded;
 window.DashState = DashState;
+window.switchDatabase = switchDatabase;

@@ -26,7 +26,24 @@
         <span class="navbar-brand fw-bold text-primary"
           ><i class="bi bi-graph-up-arrow me-2"></i>FreqTrade</span
         >
-        <div class="navbar-nav d-flex flex-row gap-3">
+        <div class="navbar-nav d-flex flex-row gap-3 align-items-center">
+          <div class="nav-item me-2">
+            <div class="input-group input-group-sm">
+              <span
+                class="input-group-text bg-dark text-secondary border-secondary"
+                style="font-size: 0.75rem"
+                >策略库</span
+              >
+              <select
+                id="db-selector"
+                class="form-select form-select-sm bg-dark text-light border-secondary"
+                style="width: auto; min-width: 160px"
+                onchange="switchDatabase(this.value)"
+              >
+                <option value="">加载中...</option>
+              </select>
+            </div>
+          </div>
           <a
             class="nav-link active"
             href="#"

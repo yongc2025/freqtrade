@@ -12,10 +12,10 @@ ROOT = THIS_DIR.parent.parent
 
 # 引入服务模块
 from services.core import TradeService, MarketScanner, LiveReporter
-from routers import trades, analysis
+from routers import trades, analysis, config
 
 # 配置参数 - 支持从命令行读取 (例如: python server_new.py db.sqlite 1000 8788)
-DB_NAME = sys.argv[1] if len(sys.argv) > 1 else "tradesv3_momentum_live_v2.sqlite"
+DB_NAME = sys.argv[1] if len(sys.argv) > 1 else "tradesv3_momentum_live.sqlite"
 DB_PATH = ROOT / "user_data" / Path(DB_NAME).name
 STARTING_BALANCE = float(sys.argv[2]) if len(sys.argv) > 2 else 1000.0
 PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 8788
@@ -43,6 +43,7 @@ app.mount("/views", StaticFiles(directory=THIS_DIR / "views"), name="views")
 # 挂载模块化路由
 app.include_router(trades.router)
 app.include_router(analysis.router)
+app.include_router(config.router)
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
