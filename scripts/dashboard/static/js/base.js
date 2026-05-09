@@ -151,11 +151,14 @@ async function switchDatabase(dbName) {
   if (!dbName) return;
 
   try {
-    const response = await fetch(`/api/config/switch-db?db_name=${dbName}`, {
-      method: "POST",
-    });
+    const response = await fetch(
+      `/api/config/switch-db?db_name=${encodeURIComponent(dbName)}`,
+      {
+        method: "POST",
+      },
+    );
     if (response.ok) {
-      // 切换成功后，重置已加载标记并重新加载当前页面
+      // 切换成功后，更新 DashState 中的标记，让页面重新加载
       Object.keys(DashState.loadedPages).forEach((key) => {
         DashState.loadedPages[key] = false;
       });
@@ -163,7 +166,16 @@ async function switchDatabase(dbName) {
       const activePage =
         document.querySelector(".page.active")?.id.replace("page-", "") ||
         "scan";
-      ensurePageLoaded(activePage);
+
+      // 核心：强制重新执行当前页面的加载函数
+      if (activePage === "scan" && typeof loadScanData === "function")
+        loadScanData();
+      if (activePage === "trades" && typeof loadTrades === "function")
+        loadTrades();
+      if (activePage === "report" && typeof loadReportData === "function")
+        loadReportData();
+
+      DashState.loadedPages[activePage] = true;
     } else {
       const err = await response.json();
       alert(`切换失败: ${err.detail}`);

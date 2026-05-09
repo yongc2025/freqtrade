@@ -7,7 +7,8 @@ router = APIRouter(prefix="/api/config", tags=["config"])
 @router.get("/databases")
 async def list_databases(request: Request):
     """列出 user_data 目录下所有的 sqlite 数据库文件"""
-    root = Path(__file__).parent.parent.parent
+    # 修正路径获取方式
+    root = Path(__file__).parent.parent.parent.parent
     user_data_dir = root / "user_data"
     
     dbs = []
@@ -28,7 +29,7 @@ async def get_current_db(request: Request):
 @router.post("/switch-db")
 async def switch_database(request: Request, db_name: str):
     """切换当前使用的数据库文件"""
-    root = Path(__file__).parent.parent.parent
+    root = Path(__file__).parent.parent.parent.parent
     db_path = root / "user_data" / db_name
     
     if not db_path.exists():
