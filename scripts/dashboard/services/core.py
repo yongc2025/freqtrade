@@ -316,22 +316,40 @@ class LiveReporter:
 
     async def run_analysis(self, starting_balance: float = 1000.0):
         self.status = "running"
-        self.log = "Starting analysis...\n"
+        self.log = f"--- Analysis Start: {datetime.now()} ---\n"
+        self.log += f"DB Path: {self.db_path}\n"
+        self.log += f"Starting Balance: {starting_balance}\n"
+        self.log += f"Python Executable: {sys.executable}\n"
+        self.log += f"Script Path: {self.script_path}\n"
+        
         try:
+             # 构造完整的外部命令
+             cmd = [
+                 sys.executable, str(self.script_path),
+                 str(self.db_path), str(starting_balance), str(self.output_json)
+             ]
+             self.log += f"Executing Command: {' '.join(cmd)}\n\n"
+             
              result = subprocess.run(
-                [sys.executable, str(self.script_path),
-                 str(self.db_path), str(starting_balance), str(self.output_json)],
+                cmd,
                 capture_output=True, text=True, timeout=120
             )
-             self.log = result.stdout + result.stderr
+             
+             self.log += "--- STDOUT ---\n" + result.stdout + "\n"
+             self.log += "--- STDERR ---\n" + result.stderr + "\n"
+             
              if result.returncode == 0 and self.output_json.exists():
                  with open(self.output_json, encoding="utf-8") as f:
                      self.data = json.load(f)
                  self.status = "ok"
                  self.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                 self.log += f"\nSuccess: Report generated at {self.updated_at}"
              else:
                  self.status = "error"
+                 self.log += f"\nError: Subprocess failed with return code {result.returncode}"
         except Exception as e:
             self.status = "error"
-            self.log = str(e)
+            self.log += f"\nException: {str(e)}"
+            import traceback
+            self.log += f"\n{traceback.format_exc()}"
 
