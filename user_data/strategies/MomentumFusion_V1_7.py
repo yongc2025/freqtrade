@@ -55,6 +55,7 @@ class MomentumFusion_V1_7(IStrategy):
     can_short = False
     process_only_new_candles = True
     startup_candle_count = 320
+    use_custom_stoploss = True  # 启用 custom_stoploss 函数
 
     # ===== 止损冷却期（分钟） =====
     stoploss_cooldown_minutes: int = 60
