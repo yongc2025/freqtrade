@@ -1,0 +1,126 @@
+{
+  "max_open_trades": 10,
+  "stake_currency": "USDT",
+  "stake_amount": "unlimited",
+  "tradable_balance_ratio": 0.95,
+  "fiat_display_currency": "USD",
+  "dry_run": false,
+  "timeframe": "1h",
+  "bot_name": "MomentumFusion_Live_V1_6",
+  "initial_state": "running",
+  "force_entry_enable": false,
+
+  "exchange": {
+    "name": "binance",
+    "key": "",
+    "secret": "",
+    "type": "futures",
+    "ccxt_config": {
+      "timeout": 30000,
+      "options": {
+        "defaultType": "future"
+      }
+    },
+    "ccxt_async_config": {
+      "timeout": 30000,
+      "aiohttp_trust_env": false,
+      "options": {
+        "defaultType": "future"
+      }
+    },
+    "pair_whitelist": [],
+    "pair_blacklist": [
+      "(BSC)/.*",
+      ".*REWARD/.*",
+      ".*BEAR/.*",
+      ".*BULL/.*",
+      ".*UP/.*",
+      ".*DOWN/.*",
+      ".*BNB/.*",
+      "BTC/USDT:USDT",
+      "ETH/USDT:USDT",
+      "SOL/USDT:USDT",
+      "XRP/USDT:USDT",
+      "BNB/USDT:USDT",
+      "TRX/USDT:USDT",
+      "ADA/USDT:USDT",
+      "DOGE/USDT:USDT"
+    ]
+  },
+
+  "trading_mode": "futures",
+  "margin_mode": "isolated",
+  "leverage": 1,
+  "liquidation_buffer": 0.05,
+  "fee": 0.0005,
+
+  "order_types": {
+    "entry": "limit",
+    "exit": "limit",
+    "time_in_force": "ioc",
+    "stoploss": "market",
+    "stoploss_on_exchange": true
+  },
+
+  "entry_pricing": {
+    "price_side": "other",
+    "use_order_book": true,
+    "order_book_top": 1,
+    "check_depth_of_market": {
+      "enabled": false,
+      "bids_to_ask_delta": 1
+    }
+  },
+
+  "exit_pricing": {
+    "price_side": "other",
+    "use_order_book": true,
+    "order_book_top": 1
+  },
+
+  "unfilledtimeout": {
+    "entry": 10,
+    "exit": 10,
+    "exit_timeout_count": 0
+  },
+
+  "pairlists": [
+    {
+      "method": "VolumePairList",
+      "number_assets": 80,
+      "sort_key": "quoteVolume",
+      "refresh_period": 900
+    },
+    {
+      "method": "AgeFilter",
+      "min_days_listed": 30
+    },
+    {
+      "method": "PriceFilter",
+      "low_price_ratio": 0.01
+    },
+    {
+      "method": "SpreadFilter",
+      "max_spread_ratio": 0.005
+    }
+  ],
+
+  "api_server": {
+    "enabled": true,
+    "listen_ip_address": "0.0.0.0",
+    "listen_port": 8781,
+    "verbosity": "error",
+    "enable_openapi": false,
+    "jwt_secret_key": "momentum_live_secret_key",
+    "CORS_origins": ["http://localhost:8781", "http://127.0.0.1:8781"],
+    "username": "admin",
+    "password": "INSERT_YOUR_COMPLEX_PASSWORD_HERE"
+  },
+
+  "db_url": "sqlite:///user_data/tradesv3_momentum_live_v1_6.sqlite?check_same_thread=False",
+  "logfile": "user_data/logs/freqtrade_momentum_live_v1_6.log",
+
+  "internals": {
+    "process_throttle_secs": 15
+  }
+}
