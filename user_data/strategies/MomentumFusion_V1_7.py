@@ -36,13 +36,17 @@ class MomentumFusion_V1_7(IStrategy):
 
     V1.7 改动：
     1. 删除 populate_exit_trend 中所有趋势/动量出场信号
-    2. 止损从 -10% 收紧到 -5%（替代 trend_break_long 的 -3.9% 均亏）
+    2. 时间衰减止损（custom_stoploss）：
+       - 0-2h: -3%（快速砍掉烂交易，替代 trend_break_long 的 -3.9% 均亏）
+       - 2-6h: -5%
+       - 6-12h: -7%
+       - 12h+: -10%（给好交易足够空间等 ROI）
 
     理由：
     - ROI 出场 614 笔赚 +215.58% (94.5%胜率)，入场质量没问题
     - 趋势/动量出场 569 笔亏 -199.54% (0.6%胜率)，这些出场信号完全无效
-    - 但完全删除出场后，交易耗到 -10% 止损更亏
-    - trend_break_long 均亏 -3.9%，用 -5% 止损替代：既避免"过早出场"，又不等到 -10%
+    - 固定 -5% 止损太紧（408 笔止损），固定 -10% 太松（201 笔止损但均亏大）
+    - 时间衰减：早期收紧砍烂交易，后期放宽等 ROI
     ==========================================================================
     """
 
@@ -55,7 +59,24 @@ class MomentumFusion_V1_7(IStrategy):
     # ===== 止损冷却期（分钟） =====
     stoploss_cooldown_minutes: int = 60
 
-    stoploss = -0.05  # V1.7: 从 -10% 收紧到 -5%，替代无效的趋势出场信号
+    stoploss = -0.10  # 最大止损 -10%，实际由 custom_stoploss 时间衰减控制
+
+    def custom_stoploss(self, pair: str, trade, current_time: datetime,
+                        current_rate: float, current_profit: float, **kwargs) -> float:
+        """时间衰减止损：早期收紧砍烂交易，后期放宽给好交易空间"""
+        if trade.open_date_utc:
+            hours_open = (current_time - trade.open_date_utc).total_seconds() / 3600
+        else:
+            hours_open = 0
+
+        if hours_open < 2:
+            return -0.03   # 2h 内: -3%（快速砍掉烂交易）
+        elif hours_open < 6:
+            return -0.05   # 6h 内: -5%
+        elif hours_open < 12:
+            return -0.07   # 12h 内: -7%
+        else:
+            return -0.10   # 12h+: -10%（给足够空间等 ROI）
     minimal_roi = {
         "0": 0.10,
         "200": 0.06,
