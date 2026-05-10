@@ -275,3 +275,83 @@ V1.6 方向正确但执行过度。下一步需要：
 - 杠杆：1x（期货模式但不加杠杆）
 - 交易对：VolumePairList Top 80（排除 BTC/ETH/SOL/XRP/BNB/TRX/ADA/DOGE）
 - API 端口：8781
+
+---
+
+## V1.7 — 2026-05-10
+
+### 改动目标
+出场极简化：砍掉所有趋势/动量出场信号，只留 ROI + 止损。
+
+### 问题根因（V1.6 混合标签诊断）
+
+V1.6 回测虽然只有 +9.77%，但混合标签揭示了一个关键事实：
+**入场没问题，出场在吃利润。**
+
+**ROI 出场（赚钱）：**
+| 入场标签 | 笔数 | 总收益 | 胜率 |
+|----------|------|--------|------|
+| long_only_momentum + roi | 414 | +137.36% | 94.2% |
+| ls_momentum_long + roi | 199 | +77.87% | 95.0% |
+| **合计** | **614** | **+215.58%** | **94.5%** |
+
+**趋势/动量出场（亏钱）：**
+| 入场标签 | 出场原因 | 笔数 | 总收益 | 胜率 |
+|----------|---------|------|--------|------|
+| long_only_momentum | trend_break_long | 342 | -117.74% | 0% |
+| ls_momentum_long | trend_break_long | 136 | -54.67% | 0% |
+| long_only_momentum | trend+momentum_long | 37 | -14.88% | 0% |
+| long_only_momentum | momentum_weak_long | 23 | -5.06% | 0% |
+| ls_momentum_long | momentum_weak_long | 22 | -3.11% | 9.1% |
+| ls_momentum_long | trend+momentum_long | 9 | -4.08% | 0% |
+| **合计** | | **569** | **-199.54%** | **0.6%** |
+
+**净收益 = +215.58% - 199.54% = +9.77%**（被出场吃掉了 95.5% 的利润）
+
+trend_break_long 单独就是 478 笔、0% 胜率、-172.41% 的毒瘤。
+这个标签从 V1.3 到 V1.6 一直在吃利润，从未改变。
+
+### 改动内容
+**删除 `populate_exit_trend` 中所有出场信号。**
+
+```python
+def populate_exit_trend(self, dataframe, metadata):
+    # V1.7: 删除所有趋势/动量出场信号
+    # 出场完全交给 ROI 阶梯 + 止损
+    return dataframe
+```
+
+ROI 阶梯（不变）：
+```python
+minimal_roi = {
+    "0": 0.10,      # 立即: 10%
+    "200": 0.06,    # 3.3h: 6%
+    "620": 0.03,    # 10.3h: 3%
+    "1440": 0,      # 24h: 保本出场
+}
+```
+
+止损（不变）：-10%
+
+### 预期效果
+- 消除 trend_break_long 的 -172.41% 亏损（这些交易不再被提前出场，由 ROI 或止损处理）
+- 消除 trend+momentum_long 和 momentum_weak_long 的 -27.13% 亏损
+- 总收益应大幅回升（接近 ROI 出场的 +215.58% 减去止损损失）
+- 交易笔数不变（入场逻辑没改）
+- 胜率可能下降（更多交易会走到止损），但单笔盈利应该更大
+
+### 验证标准
+- 总收益 > V1.5 (+44.35%)，理想情况 > V1.6 的 +215.58%（ROI 出场收益）
+- 不再出现 trend_break_long / momentum_weak_long / trend+momentum_long 标签
+- 最大回撤可控
+
+### 回测结果
+_待填写_
+
+### 实盘部署
+- 配置文件：config_momentum_server_v1_7.json
+- 策略文件：MomentumFusion_V1_7.py
+- Bot 名称：MomentumFusion_Live_V1_7
+- 杠杆：1x（期货模式但不加杠杆）
+- 交易对：VolumePairList Top 80（排除 BTC/ETH/SOL/XRP/BNB/TRX/ADA/DOGE）
+- API 端口：8781
