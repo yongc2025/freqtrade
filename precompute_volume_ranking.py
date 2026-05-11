@@ -62,18 +62,18 @@ def main():
     # 扫描可用数据
     print("扫描数据文件...")
     available_pairs = []
-    for f in sorted(datadir.glob(f"*-{args.timeframe}.feather")):
-        pair_name = f.stem.replace(f"-{args.timeframe}", "")
-        pair_name = pair_name.replace("_", "/")
-        if ":" not in pair_name:
-            # BTC_USDT -> BTC/USDT:USDT
-            parts = pair_name.split("/")
-            if len(parts) == 2:
-                pair_name = f"{parts[0]}/{parts[1]}:{parts[1]}"
+    # Freqtrade futures 数据格式: {PAIR}_USDT_USDT-1h-futures.feather
+    for f in sorted(datadir.glob(f"*-{args.timeframe}-futures.feather")):
+        pair_name = f.stem.replace(f"-{args.timeframe}-futures", "")
+        # 0G_USDT_USDT -> 0G/USDT:USDT
+        parts = pair_name.split("_")
+        if len(parts) >= 3 and parts[-2] == "USDT" and parts[-1] == "USDT":
+            base = "_".join(parts[:-2])
+            pair_name = f"{base}/USDT:USDT"
         available_pairs.append(pair_name)
 
     if not available_pairs:
-        for f in sorted(datadir.glob(f"*-{args.timeframe}.json")):
+        for f in sorted(datadir.glob(f"*-{args.timeframe}.feather")):
             pair_name = f.stem.replace(f"-{args.timeframe}", "")
             pair_name = pair_name.replace("_", "/")
             if ":" not in pair_name:
@@ -82,27 +82,41 @@ def main():
                     pair_name = f"{parts[0]}/{parts[1]}:{parts[1]}"
             available_pairs.append(pair_name)
 
+    if not available_pairs:
+        for f in sorted(datadir.glob(f"*-{args.timeframe}-futures.json")):
+            pair_name = f.stem.replace(f"-{args.timeframe}-futures", "")
+            parts = pair_name.split("_")
+            if len(parts) >= 3 and parts[-2] == "USDT" and parts[-1] == "USDT":
+                base = "_".join(parts[:-2])
+                pair_name = f"{base}/USDT:USDT"
+            available_pairs.append(pair_name)
+
     print(f"找到 {len(available_pairs)} 个币种")
 
     # 加载所有数据
     print("加载历史数据...")
     all_data = {}
     for pair in available_pairs:
+        # 0G/USDT:USDT -> 0G_USDT_USDT
         pair_filename = pair.replace("/", "_").replace(":", "_")
-        filepath = datadir / f"{pair_filename}-{args.timeframe}.feather"
+        # 尝试 futures 格式: {PAIR}_USDT_USDT-1h-futures.feather
+        filepath = datadir / f"{pair_filename}-{args.timeframe}-futures.feather"
+        if not filepath.exists():
+            filepath = datadir / f"{pair_filename}-{args.timeframe}.feather"
+        if not filepath.exists():
+            filepath = datadir / f"{pair_filename}-{args.timeframe}-futures.json"
         if not filepath.exists():
             filepath = datadir / f"{pair_filename}-{args.timeframe}.json"
-            if not filepath.exists():
-                continue
-            try:
-                df = pd.read_json(filepath)
-            except Exception:
-                continue
-        else:
-            try:
+        if not filepath.exists():
+            continue
+
+        try:
+            if filepath.suffix == ".feather":
                 df = pd.read_feather(filepath)
-            except Exception:
-                continue
+            else:
+                df = pd.read_json(filepath)
+        except Exception:
+            continue
 
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"], unit="ms", errors="coerce")
