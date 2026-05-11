@@ -46,11 +46,12 @@ def main():
     )
     parser.add_argument("--datadir", required=True, help="Freqtrade 数据目录")
     parser.add_argument("--number-assets", type=int, default=40, help="top N 币种")
-    parser.add_argument("--lookback-hours", type=int, default=24, help="成交量回看小时数")
+    parser.add_argument("--lookback-hours", type=int, default=1, help="成交量回看小时数 (实盘 VolumePairList lookback_days=0, 用 1h 近似)")
     parser.add_argument("--timerange", default="20250101-", help="时间范围")
     parser.add_argument("--output", default="volume_ranking.json", help="输出 JSON 文件")
     parser.add_argument("--timeframe", default="1h", help="数据时间框架")
-    parser.add_argument("--step-hours", type=int, default=1, help="每隔几小时计算一次")
+    parser.add_argument("--step-hours", type=int, default=1, help="每隔几小时计算一次 (实盘 refresh_period=900s, 用 1h 近似)")
+    parser.add_argument("--min-days-listed", type=int, default=30, help="最少上线天数 (匹配实盘 AgeFilter)")
     parser.add_argument("--pairlist-output", default="pair_universe.txt", help="币种超集列表输出")
     args = parser.parse_args()
 
@@ -133,6 +134,19 @@ def main():
             all_data[pair] = df
 
     print(f"成功加载 {len(all_data)} 个币种")
+
+    # 过滤上线天数不足的币种（匹配实盘 AgeFilter）
+    if args.min_days_listed > 0:
+        min_candles = args.min_days_listed * 24  # 1h timeframe
+        filtered = {}
+        for pair, df in all_data.items():
+            if len(df) >= min_candles:
+                filtered[pair] = df
+        skipped = len(all_data) - len(filtered)
+        if skipped > 0:
+            print(f"AgeFilter: 过滤掉 {skipped} 个上线不足 {args.min_days_listed} 天的币种")
+        all_data = filtered
+        print(f"AgeFilter 后剩余 {len(all_data)} 个币种")
 
     if len(all_data) < args.number_assets:
         print(f"⚠️  数据不足 {args.number_assets} 个币种，将使用全部 {len(all_data)} 个")

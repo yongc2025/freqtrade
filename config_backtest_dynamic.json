@@ -82,12 +82,8 @@
       "method": "VolumeRankingPairList",
       "number_assets": 40,
       "ranking_file": "volume_ranking.json",
-      "lookback_hours": 24,
+      "lookback_hours": 1,
       "step_hours": 1
-    },
-    {
-      "method": "AgeFilter",
-      "min_days_listed": 30
     }
   ],
 
