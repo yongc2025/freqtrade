@@ -50,7 +50,8 @@ def main():
     parser.add_argument("--timerange", default="20250101-", help="时间范围")
     parser.add_argument("--output", default="volume_ranking.json", help="输出 JSON 文件")
     parser.add_argument("--timeframe", default="1h", help="数据时间框架")
-    parser.add_argument("--step-hours", type=int, default=1, help="每隔几小时计算一次 (实盘 refresh_period=900s, 用 1h 近似)")
+    parser.add_argument("--step-hours", type=int, default=1, help="每隔几小时计算一次 (与 --step-minutes 二选一)")
+    parser.add_argument("--step-minutes", type=int, default=0, help="每隔几分钟计算一次 (优先于 --step-hours, 实盘 900s 用 15)")
     parser.add_argument("--min-days-listed", type=int, default=30, help="最少上线天数 (匹配实盘 AgeFilter)")
     parser.add_argument("--pairlist-output", default="pair_universe.txt", help="币种超集列表输出")
     args = parser.parse_args()
@@ -168,7 +169,10 @@ def main():
     print(f"时间范围: {all_ts[0]} ~ {all_ts[-1]}，共 {len(all_ts)} 根 K 线")
 
     # 按 step 筛选计算点
-    step = pd.Timedelta(hours=args.step_hours)
+    if args.step_minutes > 0:
+        step = pd.Timedelta(minutes=args.step_minutes)
+    else:
+        step = pd.Timedelta(hours=args.step_hours)
     calc_times = [all_ts[0]]
     while calc_times[-1] + step <= all_ts[-1]:
         calc_times.append(calc_times[-1] + step)
