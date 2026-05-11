@@ -119,7 +119,7 @@ def main():
             continue
 
         if "date" in df.columns:
-            df["date"] = pd.to_datetime(df["date"], unit="ms", errors="coerce")
+            df["date"] = pd.to_datetime(df["date"], unit="ms", utc=True, errors="coerce")
             df = df.set_index("date")
 
         if "close" in df.columns and "volume" in df.columns:
@@ -145,9 +145,11 @@ def main():
 
     start_date, end_date = parse_timerange(args.timerange)
     if start_date:
-        all_ts = [t for t in all_ts if t >= pd.Timestamp(start_date)]
+        start_date = pd.Timestamp(start_date, tz="UTC")
+        all_ts = [t for t in all_ts if t >= start_date]
     if end_date:
-        all_ts = [t for t in all_ts if t <= pd.Timestamp(end_date)]
+        end_date = pd.Timestamp(end_date, tz="UTC")
+        all_ts = [t for t in all_ts if t <= end_date]
 
     print(f"时间范围: {all_ts[0]} ~ {all_ts[-1]}，共 {len(all_ts)} 根 K 线")
 
