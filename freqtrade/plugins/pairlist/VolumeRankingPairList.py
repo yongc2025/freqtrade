@@ -375,7 +375,3 @@ class VolumeRankingPairList(IPairList):
         nearest_ts = self._sorted_ts[idx - 1]
 
         return self._ranking.get(nearest_ts)
-
-    def _validate_pair(self, pair: str, ticker: Ticker | None) -> bool:
-        """不需要验证，因为排名文件已经包含了有效币种"""
-        return True
