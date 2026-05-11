@@ -1,0 +1,99 @@
+{
+  "max_open_trades": 10,
+  "stake_currency": "USDT",
+  "stake_amount": "unlimited",
+  "tradable_balance_ratio": 0.95,
+  "fiat_display_currency": "USD",
+  "dry_run": true,
+  "timeframe": "1h",
+  "bot_name": "MomentumFusion_Backtest_V1",
+  "initial_state": "running",
+  "force_entry_enable": false,
+
+  "exchange": {
+    "name": "binance",
+    "key": "",
+    "secret": "",
+    "type": "futures",
+    "ccxt_config": {
+      "timeout": 30000,
+      "options": {
+        "defaultType": "future"
+      }
+    },
+    "ccxt_async_config": {
+      "timeout": 30000,
+      "options": {
+        "defaultType": "future"
+      }
+    },
+    "pair_whitelist": [],
+    "pair_blacklist": [
+      "(BSC)/.*",
+      ".*REWARD/.*",
+      ".*BEAR/.*",
+      ".*BULL/.*",
+      ".*UP/.*",
+      ".*DOWN/.*",
+      ".*BNB/.*",
+      "BTC/USDT:USDT",
+      "ETH/USDT:USDT",
+      "SOL/USDT:USDT",
+      "XRP/USDT:USDT",
+      "BNB/USDT:USDT",
+      "TRX/USDT:USDT",
+      "ADA/USDT:USDT",
+      "DOGE/USDT:USDT"
+    ]
+  },
+
+  "trading_mode": "futures",
+  "margin_mode": "isolated",
+  "leverage": 1,
+  "liquidation_buffer": 0.05,
+  "fee": 0.0005,
+
+  "order_types": {
+    "entry": "limit",
+    "exit": "limit",
+    "time_in_force": "ioc",
+    "stoploss": "market",
+    "stoploss_on_exchange": true
+  },
+
+  "entry_pricing": {
+    "price_side": "other",
+    "use_order_book": true,
+    "order_book_top": 1,
+    "check_depth_of_market": {
+      "enabled": false,
+      "bids_to_ask_delta": 1
+    }
+  },
+
+  "exit_pricing": {
+    "price_side": "other",
+    "use_order_book": true,
+    "order_book_top": 1
+  },
+
+  "pairlists": [
+    {
+      "method": "VolumeRankingPairList",
+      "number_assets": 40,
+      "ranking_file": "volume_ranking.json",
+      "lookback_hours": 24,
+      "step_hours": 1
+    },
+    {
+      "method": "AgeFilter",
+      "min_days_listed": 30
+    }
+  ],
+
+  "enable_dynamic_pairlist": true,
+
+  "internals": {
+    "process_throttle_secs": 15
+  }
+}
