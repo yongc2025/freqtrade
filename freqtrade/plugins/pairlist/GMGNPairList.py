@@ -515,6 +515,33 @@ class GMGNPairList(IPairList):
 
         return pairs
 
+    def _get_proxy_env(self) -> dict[str, str]:
+        """
+        从 ccxt_config 中提取代理设置，构建子进程可用的环境变量。
+
+        gmgn-cli 通过 subprocess 调用，不会读取 ccxt 的代理配置。
+        需要将代理转为 HTTP_PROXY/HTTPS_PROXY 环境变量传递给子进程。
+        """
+        env = {}
+        try:
+            ccxt_config = self._config.get("exchange", {}).get("ccxt_config", {})
+            proxies = ccxt_config.get("proxies", {})
+            http_proxy = proxies.get("http", "")
+            https_proxy = proxies.get("https", "")
+            if http_proxy:
+                env["HTTP_PROXY"] = http_proxy
+                env["http_proxy"] = http_proxy
+            if https_proxy:
+                env["HTTPS_PROXY"] = https_proxy
+                env["https_proxy"] = https_proxy
+            # ALL_PROXY 兜底（部分 HTTP 库读这个）
+            if https_proxy:
+                env["ALL_PROXY"] = https_proxy
+                env["all_proxy"] = https_proxy
+        except Exception:
+            pass
+        return env
+
     def _call_gmgn(self, *args) -> dict | None:
         """
         调用 gmgn-cli 并返回解析后的 JSON
@@ -523,6 +550,12 @@ class GMGNPairList(IPairList):
         :return: 解析后的 JSON dict，失败返回 None
         """
         cmd = [self._gmgn_cli] + list(args)
+
+        # 合并系统环境变量 + 代理变量
+        import os
+        proc_env = os.environ.copy()
+        proc_env.update(self._get_proxy_env())
+
         try:
             result = subprocess.run(
                 cmd,
@@ -531,6 +564,7 @@ class GMGNPairList(IPairList):
                 encoding="utf-8",
                 errors="replace",
                 timeout=15,
+                env=proc_env,
             )
 
             if result.returncode != 0:
