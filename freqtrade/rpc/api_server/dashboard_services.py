@@ -40,9 +40,11 @@ def _resolve_db_path(config) -> Path:
     从 freqtrade config 自动解析 SQLite 数据库文件路径。
 
     优先级：
-    1. config["db_url"] 中的 database 部分
-    2. config["datadir"] 的上级目录 + tradesv3.sqlite / tradesv3.dryrun.sqlite
-    3. 若上级目录不存在，继续往上查找 user_data 根目录（兼容命令行启动场景）
+    1. config["db_url"] 中的 database 部分（绝对路径直接使用）
+    2. 相对路径：先尝试基于当前工作目录（命令行启动时 CWD 就是项目根）
+    3. 再尝试 datadir.parent（如 user_data/data/）
+    4. 再尝试 datadir.parent.parent（如 user_data/）
+    5. 默认: datadir.parent + tradesv3.sqlite / tradesv3.dryrun.sqlite
     """
     from sqlalchemy.engine import make_url
 
@@ -52,10 +54,13 @@ def _resolve_db_path(config) -> Path:
     if url.database:
         db_path = Path(url.database)
         if not db_path.is_absolute():
-            # 先尝试 datadir.parent (如 user_data/data/)
+            # 相对路径：先尝试基于当前工作目录（freqtrade CLI 启动时 CWD = 项目根）
+            cwd_path = Path.cwd() / db_path
+            if cwd_path.exists():
+                return cwd_path
+            # 再尝试 datadir.parent
             db_path = config["datadir"].parent / db_path
-            # 如果文件不存在且 datadir 有更上层目录，尝试 user_data 根目录
-            # 兼容 datadir=user_data/data/<exchange> 的情况
+            # 如果文件不存在，尝试 datadir.parent.parent
             if not db_path.exists():
                 alt_path = config["datadir"].parent.parent / Path(url.database)
                 if alt_path.exists():
