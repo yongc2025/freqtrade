@@ -42,6 +42,7 @@ def _resolve_db_path(config) -> Path:
     优先级：
     1. config["db_url"] 中的 database 部分
     2. config["datadir"] 的上级目录 + tradesv3.sqlite / tradesv3.dryrun.sqlite
+    3. 若上级目录不存在，继续往上查找 user_data 根目录（兼容命令行启动场景）
     """
     from sqlalchemy.engine import make_url
 
@@ -51,11 +52,23 @@ def _resolve_db_path(config) -> Path:
     if url.database:
         db_path = Path(url.database)
         if not db_path.is_absolute():
+            # 先尝试 datadir.parent (如 user_data/data/)
             db_path = config["datadir"].parent / db_path
+            # 如果文件不存在且 datadir 有更上层目录，尝试 user_data 根目录
+            # 兼容 datadir=user_data/data/<exchange> 的情况
+            if not db_path.exists():
+                alt_path = config["datadir"].parent.parent / Path(url.database)
+                if alt_path.exists():
+                    return alt_path
         return db_path
 
     suffix = ".dryrun.sqlite" if config.get("dry_run") else ".sqlite"
-    return config["datadir"].parent / f"tradesv3{suffix}"
+    db_path = config["datadir"].parent / f"tradesv3{suffix}"
+    if not db_path.exists():
+        alt_path = config["datadir"].parent.parent / f"tradesv3{suffix}"
+        if alt_path.exists():
+            return alt_path
+    return db_path
 
 
 def _resolve_starting_balance(config, rpc=None) -> float:
