@@ -771,6 +771,8 @@ class AltcoinCompressionStrategy(IStrategy):
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
             )
             if result.returncode != 0:
