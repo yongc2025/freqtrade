@@ -159,11 +159,19 @@ async def run_report(
     from freqtrade.rpc.api_server.dashboard_services import _resolve_starting_balance
 
     reporter = request.app.state.dashboard_reporter
-    config = request.app.state.ft_config
-    rpc = getattr(request.app.state, "_rpc", None)
+    config = getattr(request.app.state, "ft_config", {}) or {}
+    rpc = None
+    try:
+        from freqtrade.rpc.api_server.webserver import ApiServer
+        rpc = getattr(ApiServer, "_rpc", None)
+    except Exception:
+        pass
 
     if starting_balance is None:
-        starting_balance = _resolve_starting_balance(config, rpc)
+        try:
+            starting_balance = _resolve_starting_balance(config, rpc)
+        except Exception:
+            starting_balance = 1000.0
 
     # 同步数据库路径
     reporter.db_path = request.app.state.dashboard_trade_service.db_path
@@ -761,16 +769,26 @@ async def bot_info(request: Request):
     """获取 bot 自动检测信息"""
     from freqtrade.rpc.api_server.dashboard_services import _resolve_starting_balance
 
-    config = request.app.state.ft_config
-    rpc = getattr(request.app.state, "_rpc", None)
+    config = getattr(request.app.state, "ft_config", {}) or {}
+    rpc = None
+    try:
+        from freqtrade.rpc.api_server.webserver import ApiServer
+        rpc = getattr(ApiServer, "_rpc", None)
+    except Exception:
+        pass
+
+    try:
+        starting_balance = _resolve_starting_balance(config, rpc)
+    except Exception:
+        starting_balance = 1000.0
 
     info = BotInfo(
         exchange=config.get("exchange", "unknown"),
         stake_currency=config.get("stake_currency", "USDT"),
         trading_mode=config.get("trading_mode", "spot"),
         run_mode=config.get("runmode", "unknown"),
-        db_path=str(request.app.state.dashboard_trade_service.db_path),
-        starting_balance=_resolve_starting_balance(config, rpc),
+        db_path=str(getattr(request.app.state, "dashboard_trade_service", None) and request.app.state.dashboard_trade_service.db_path or ""),
+        starting_balance=starting_balance,
         dry_run=config.get("dry_run", True),
     )
 
