@@ -18,6 +18,10 @@
 - 移动止损：最高价回落 12%（触及 20% 利润后激活）
 - 时间止损：7天（利润<5%时）
 - 聪明钱撤退/衰退信号
+- 狙击手激增信号（机器人涌入 = 分发前兆）
+- 安全指标恶化（rug/bundler/rat 超过阈值）
+- 貔貅转化（持仓中变成貔貅盘）
+- 新钱包暴增（庄家对敲嫌疑）
 - RSI 超买出场
 - 量价背离出场（放量下跌 = 分发信号）
 - 分级利润保护（15%/25%/40% 三档，越涨回撤容忍越小）
@@ -254,10 +258,17 @@ class AltcoinCompressionStrategy(IStrategy):
         """
         出场信号（多重出场条件，任一触发即出场）
 
-        信号1: 聪明钱撤退 — 归零 + 安全恶化
-        信号2: 聪明钱衰退 — 数量趋势性下降
-        信号3: RSI 超买 — 涨过头了
-        信号4: 量价背离 — 放量下跌（分发信号）
+        GMGN 链上恶化信号：
+          信号1: 聪明钱撤退 — 归零 + 安全恶化
+          信号2: 聪明钱衰退 — 数量趋势性下降
+          信号3: 蜘蛛网恶化 — sniper_count 激增（机器人涌入）
+          信号4: 安全指标恶化 — rug/bundler/rat 超过入场阈值
+          信号5: 貔貅转化 — 入场时不是貔貅，现在检测到了
+          信号6: 新钱包暴增 — fresh_wallet_rate 飙升（可能庄家对敲）
+
+        技术面出场信号：
+          信号7: RSI 超买
+          信号8: 量价背离（放量下跌 = 分发信号）
         """
         pair = metadata["pair"]
 
@@ -268,23 +279,43 @@ class AltcoinCompressionStrategy(IStrategy):
         )
 
         # === 信号2: 聪明钱衰退检测 ===
-        # 用滚动窗口检测聪明钱数量趋势性下降
-        # 如果最近3根K线的聪明钱均值比之前下降超过阈值，触发
         sm_col = dataframe["smart_money_count"]
         sm_ma3 = sm_col.rolling(3).mean()
         sm_ma3_prev = sm_col.rolling(6).mean().shift(3)
-        # 衰退比例：(之前的均值 - 当前均值) / 之前均值
         sm_decline_ratio = (sm_ma3_prev - sm_ma3) / sm_ma3_prev.replace(0, np.nan)
         signal_smart_money_decline = (
             (sm_decline_ratio > self.smart_money_decline_threshold.value)
-            & (sm_ma3_prev > 2)  # 之前至少有2个聪明钱才有意义
+            & (sm_ma3_prev > 2)
         )
 
-        # === 信号3: RSI 超买 ===
+        # === 信号3: 狙击手激增（机器人涌入，可能是分发前兆） ===
+        # 入场时狙击手少（<50），现在突然增多 → 危险
+        sniper_col = dataframe["sniper_count"]
+        sniper_ma3 = sniper_col.rolling(3).mean()
+        sniper_ma3_prev = sniper_col.rolling(6).mean().shift(3)
+        sniper_spike = (sniper_ma3 > sniper_ma3_prev * 2) & (sniper_ma3 > 50)
+
+        # === 信号4: 安全指标恶化 ===
+        # 入场时 rug_ratio < 0.3, bundler < 0.2, rat < 0.15
+        # 现在超过阈值 → 状况恶化
+        security_deteriorated = (
+            (dataframe["rug_ratio"] > 0.25)  # 接近入场阈值
+            | (dataframe["bundler_rate"] > 0.18)
+            | (dataframe["rat_trader_rate"] > 0.12)
+        )
+
+        # === 信号5: 貔貅转化 ===
+        # 入场时 is_honeypot=0，现在变成 1 → 立即跑
+        signal_honeypot = dataframe["is_honeypot"] == 1
+
+        # === 信号6: 新钱包暴增 ===
+        # fresh_wallet_rate 突然升高 → 可能是庄家创建新钱包对敲
+        signal_fresh_wallet = dataframe["fresh_wallet_rate"] > 0.4
+
+        # === 信号7: RSI 超买 ===
         signal_rsi_overbought = dataframe["rsi"] > self.rsi_overbought.value
 
-        # === 信号4: 量价背离（放量下跌） ===
-        # 当前成交量是均值的 N 倍，且收盘价低于开盘价（阴线）
+        # === 信号8: 量价背离（放量下跌） ===
         volume_spike = dataframe["volume_ratio"] > self.volume_spike_multiplier.value
         bearish_candle = dataframe["close"] < dataframe["open"]
         signal_volume_divergence = volume_spike & bearish_candle
@@ -294,17 +325,25 @@ class AltcoinCompressionStrategy(IStrategy):
             (
                 signal_smart_money_exit
                 | signal_smart_money_decline
+                | sniper_spike
+                | security_deteriorated
+                | signal_honeypot
+                | signal_fresh_wallet
                 | signal_rsi_overbought
                 | signal_volume_divergence
             ) & (dataframe["volume"] > 0),
             "exit_long",
         ] = 1
 
-        # 记录出场原因到辅助列（用于日志/debug）
-        dataframe.loc[signal_smart_money_exit, "exit_tag"] = "smart_money_exit"
-        dataframe.loc[signal_smart_money_decline, "exit_tag"] = "smart_money_decline"
-        dataframe.loc[signal_rsi_overbought, "exit_tag"] = "rsi_overbought"
+        # 记录出场原因（按优先级，后写的覆盖先写的）
         dataframe.loc[signal_volume_divergence, "exit_tag"] = "volume_divergence"
+        dataframe.loc[signal_rsi_overbought, "exit_tag"] = "rsi_overbought"
+        dataframe.loc[signal_fresh_wallet, "exit_tag"] = "fresh_wallet_spike"
+        dataframe.loc[signal_honeypot, "exit_tag"] = "honeypot_detected"
+        dataframe.loc[security_deteriorated, "exit_tag"] = "security_deteriorated"
+        dataframe.loc[sniper_spike, "exit_tag"] = "sniper_spike"
+        dataframe.loc[signal_smart_money_decline, "exit_tag"] = "smart_money_decline"
+        dataframe.loc[signal_smart_money_exit, "exit_tag"] = "smart_money_exit"
 
         return dataframe
 

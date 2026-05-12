@@ -95,8 +95,12 @@ gen_pairlist()
 | 硬止损 | Stoploss | -8% | 跌8%认亏离场 |
 | 移动止损 | Trailing Stop | 最高价回落 12% | 触及20%利润后激活，吃满趋势 |
 | 时间止损 | Time Stop | 7天 | 利润<5%时平仓 |
-| 聪明钱撤退 | Custom Exit | smart_money=0 + rug>0.2 | 聪明钱归零且安全恶化 |
+| 聪明钱撤退 | Exit Signal | smart_money=0 + rug>0.2 | 聪明钱归零且安全恶化 |
 | 聪明钱衰退 | Exit Signal | 均值下降>50% | 聪明钱趋势性减少 |
+| 狙击手激增 | Exit Signal | sniper>50 且翻倍 | 机器人涌入，分发前兆 |
+| 安全恶化 | Exit Signal | rug>0.25/bundler>0.18/rat>0.12 | 持仓中状况变差 |
+| 貔貅转化 | Exit Signal | is_honeypot=1 | 持仓中变成貔貅盘 |
+| 新钱包暴增 | Exit Signal | fresh_wallet>0.4 | 庄家对敲嫌疑 |
 | RSI 超买 | Exit Signal | RSI>75 | 涨过头了 |
 | 量价背离 | Exit Signal | 放量3x+阴线 | 分发信号 |
 | 利润保护T1 | Custom Exit | 峰值>15%,回撤>15% | 温和保护 |
