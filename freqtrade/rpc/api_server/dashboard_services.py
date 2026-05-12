@@ -476,19 +476,23 @@ class MarketScanner:
                 self.error = f"ccxt: {type(e).__name__}: {e}; rest: {type(rest_error).__name__}: {rest_error}"
 
     def _save_to_disk(self):
-        self.cache_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.cache_file, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "data": self.data,
-                    "updated_at": self.updated_at,
-                    "status": self.status,
-                    "count": len(self.data),
-                    "error": None,
-                },
-                f,
-                ensure_ascii=False,
-            )
+        try:
+            self.cache_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.cache_file, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "data": self.data,
+                        "updated_at": self.updated_at,
+                        "status": self.status,
+                        "count": len(self.data),
+                        "error": None,
+                    },
+                    f,
+                    ensure_ascii=False,
+                )
+        except OSError as e:
+            logger.warning(f"MarketScanner: failed to save cache to {self.cache_file}: {e}")
+            self.error = f"Cache save failed: {e}"
 
 
 class LiveReporter:
@@ -502,7 +506,26 @@ class LiveReporter:
         self.log = ""
         self.data = None
         self.updated_at = None
+        self._ready = self._check_prerequisites()
         self._load_from_disk()
+
+    def _check_prerequisites(self) -> bool:
+        """预检：脚本是否存在、关键依赖是否可用"""
+        if not self.script_path.exists():
+            logger.warning(
+                f"LiveReporter: script not found at {self.script_path}. "
+                "Live report generation will be unavailable."
+            )
+            return False
+        try:
+            import pandas  # noqa: F401
+        except ImportError:
+            logger.warning(
+                "LiveReporter: pandas not installed. "
+                "Live report generation will be unavailable."
+            )
+            return False
+        return True
 
     def _load_from_disk(self):
         if not self.output_json.exists():
@@ -523,6 +546,16 @@ class LiveReporter:
         执行分析脚本（异步，不阻塞事件循环）
         使用 asyncio.create_subprocess_exec 替代 subprocess.run
         """
+        if not self._ready:
+            self.status = "error"
+            self.log = (
+                f"Live report prerequisites not met.\n"
+                f"Script: {self.script_path} (exists: {self.script_path.exists()})\n"
+                f"Please ensure freqtrade is fully installed (pip install -e .) "
+                f"and pandas is available."
+            )
+            return
+
         self.status = "running"
         self.log = f"--- Analysis Start: {datetime.now()} ---\n"
         self.log += f"DB Path: {self.db_path}\n"

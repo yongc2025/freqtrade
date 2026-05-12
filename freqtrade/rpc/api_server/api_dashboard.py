@@ -11,14 +11,12 @@ FreqUI 统计分析 API 路由
 
 import io
 import json
-import math
-import statistics
 import zipfile
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from freqtrade.rpc.api_server.dashboard_schemas import (
@@ -31,7 +29,20 @@ from freqtrade.rpc.api_server.dashboard_schemas import (
     TradeResponse,
 )
 
-router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+def _require_dashboard(request: Request):
+    """依赖守卫：确保 Dashboard 服务已初始化"""
+    if not getattr(request.app.state, "dashboard_trade_service", None):
+        raise HTTPException(
+            status_code=503,
+            detail="Dashboard services not initialized. Check freqtrade logs.",
+        )
+
+
+router = APIRouter(
+    prefix="/dashboard",
+    tags=["Dashboard"],
+    dependencies=[Depends(_require_dashboard)],
+)
 
 
 # ============================================================================
@@ -149,9 +160,10 @@ async def run_report(
 
     reporter = request.app.state.dashboard_reporter
     config = request.app.state.ft_config
+    rpc = getattr(request.app.state, "_rpc", None)
 
     if starting_balance is None:
-        starting_balance = _resolve_starting_balance(config)
+        starting_balance = _resolve_starting_balance(config, rpc)
 
     # 同步数据库路径
     reporter.db_path = request.app.state.dashboard_trade_service.db_path
@@ -167,9 +179,6 @@ async def run_report(
 # ============================================================================
 # 回测对比（完整迁移自 scripts/dashboard/routers/analysis.py）
 # ============================================================================
-
-_bt_cache: Dict[str, Any] = {"data": None, "filename": None}
-
 
 def _safe_num(value: Any, default: float = 0.0) -> float:
     try:
@@ -697,47 +706,6 @@ def _build_compare_payload(
             "top_anomalies": top_anomalies,
         },
     }
-
-
-@router.post("/backtest/upload")
-async def upload_backtest(file: UploadFile = File(...)):
-    """上传回测结果文件（.json 或 .zip）"""
-    global _bt_cache
-    content = await file.read()
-    try:
-        if file.filename.endswith(".zip"):
-            with zipfile.ZipFile(io.BytesIO(content)) as archive:
-                result_files = [
-                    item
-                    for item in archive.namelist()
-                    if item.startswith("backtest-result-")
-                    and item.endswith(".json")
-                    and not item.endswith("_config.json")
-                ]
-                if not result_files:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="No backtest-result JSON found in zip",
-                    )
-                with archive.open(result_files[0]) as payload:
-                    bt_data = json.load(payload)
-        elif file.filename.endswith(".json"):
-            bt_data = json.loads(content)
-        else:
-            raise HTTPException(
-                status_code=400, detail="Unsupported file format"
-            )
-
-        strategy_name = list(bt_data["strategy"].keys())[0]
-        _bt_cache = {
-            "data": bt_data["strategy"][strategy_name],
-            "filename": file.filename,
-        }
-        return {"message": "Backtest loaded", "strategy": strategy_name}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @router.post("/backtest/compare")
