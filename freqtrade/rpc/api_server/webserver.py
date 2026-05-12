@@ -1,5 +1,6 @@
 import logging
 from ipaddress import ip_address
+from pathlib import Path
 from typing import Any
 
 import orjson
@@ -188,6 +189,7 @@ class ApiServer(RPCHandler):
         from freqtrade.rpc.api_server.api_auth import http_basic_or_jwt_token, router_login
         from freqtrade.rpc.api_server.api_background_tasks import router as api_bg_tasks
         from freqtrade.rpc.api_server.api_backtest import router as api_backtest
+        from freqtrade.rpc.api_server.api_dashboard import router as api_dashboard
         from freqtrade.rpc.api_server.api_download_data import router as api_download_data
         from freqtrade.rpc.api_server.api_pair_history import router as api_pair_history
         from freqtrade.rpc.api_server.api_pairlists import router as api_pairlists
@@ -196,6 +198,12 @@ class ApiServer(RPCHandler):
         from freqtrade.rpc.api_server.api_v1 import router_public as api_v1_public
         from freqtrade.rpc.api_server.api_webserver import router as api_webserver
         from freqtrade.rpc.api_server.api_ws import router as ws_router
+        from freqtrade.rpc.api_server.dashboard_services import (
+            LiveReporter,
+            MarketScanner,
+            TradeService,
+            _resolve_db_path,
+        )
         from freqtrade.rpc.api_server.deps import is_trading_mode, is_webserver_mode
         from freqtrade.rpc.api_server.web_ui import router_ui
 
@@ -249,6 +257,15 @@ class ApiServer(RPCHandler):
             dependencies=[Depends(http_basic_or_jwt_token), Depends(is_webserver_mode)],
         )
         app.include_router(ws_router, prefix="/api/v1")
+
+        # Dashboard 统计分析路由（trading 和 webserver 模式均可使用）
+        app.include_router(
+            api_dashboard,
+            prefix="/api/v1",
+            dependencies=[Depends(http_basic_or_jwt_token)],
+            tags=["Dashboard"],
+        )
+
         # UI Router MUST be last!
         app.include_router(router_ui, prefix="")
 
@@ -263,6 +280,43 @@ class ApiServer(RPCHandler):
         app.add_exception_handler(RPCException, self.handle_rpc_exception)
         app.add_event_handler(event_type="startup", func=self._api_startup_event)
         app.add_event_handler(event_type="shutdown", func=self._api_shutdown_event)
+
+        # 初始化 Dashboard 服务
+        self._init_dashboard_services(app, config)
+
+    def _init_dashboard_services(self, app: FastAPI, config):
+        """初始化 Dashboard 统计分析服务"""
+        from freqtrade.rpc.api_server.dashboard_services import (
+            LiveReporter,
+            MarketScanner,
+            TradeService,
+            _resolve_db_path,
+        )
+
+        try:
+            db_path = _resolve_db_path(config)
+            logger.info(f"Dashboard: Using database {db_path}")
+
+            scan_cache = config["datadir"] / "market_scan_cache.json"
+            live_report_script = (
+                Path(__file__).parent.parent.parent.parent
+                / "scripts"
+                / "dashboard"
+                / "scripts"
+                / "live_report.py"
+            )
+            live_report_json = config["datadir"] / "live_report.json"
+
+            app.state.dashboard_trade_service = TradeService(db_path)
+            app.state.dashboard_scanner = MarketScanner(scan_cache)
+            app.state.dashboard_reporter = LiveReporter(
+                db_path, live_report_script, live_report_json
+            )
+            app.state.ft_config = config
+            logger.info("Dashboard services initialized successfully")
+        except Exception as e:
+            logger.warning(f"Dashboard services failed to initialize: {e}")
+            # Dashboard 初始化失败不应阻止 freqtrade 启动
 
     async def _api_startup_event(self):
         """
