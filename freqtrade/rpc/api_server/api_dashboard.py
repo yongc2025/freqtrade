@@ -803,8 +803,15 @@ async def bot_info(request: Request):
     except Exception:
         pass
 
+    # exchange 在 config 中是 dict (如 {"name": "binance", ...}), 需要提取 name
+    exchange_cfg = config.get("exchange", "unknown")
+    if isinstance(exchange_cfg, dict):
+        exchange_name = exchange_cfg.get("name", "unknown")
+    else:
+        exchange_name = str(exchange_cfg)
+
     info = BotInfo(
-        exchange=config.get("exchange", "unknown"),
+        exchange=exchange_name,
         stake_currency=config.get("stake_currency", "USDT"),
         trading_mode=config.get("trading_mode", "spot"),
         run_mode=config.get("runmode", "unknown"),
