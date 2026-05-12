@@ -98,7 +98,7 @@
             "ADA/USDT:USDT",
             "DOGE/USDT:USDT"
         ],
-        "pairlist": [
+        "pairlists": [
             {
                 "method": "GMGNPairList",
                 "number_assets": 20,
