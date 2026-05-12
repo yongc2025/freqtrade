@@ -1,0 +1,37 @@
+[Unit]
+Description=Freqtrade Trading Bot
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=%h/freqtrade
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# 启动命令
+ExecStart=/usr/bin/docker-compose up
+
+# 停止命令
+ExecStop=/usr/bin/docker-compose down
+
+# 重启策略
+Restart=always
+RestartSec=10
+
+# 资源限制
+MemoryLimit=2G
+CPUQuota=150%
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=freqtrade
+
+# 安全选项
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
