@@ -3,14 +3,32 @@
 
 核心逻辑：
 1. 技术面识别"压缩"形态（布林带收窄 + 缩量 + RSI 低位）
-2. 聪明钱确认（GMGN 链上数据）
-3. 入场吃爆发行情
+2. 趋势+动量确认（EMA 排列 + MACD 金叉）
+3. 聪明钱确认（GMGN 链上数据）
+4. 入场吃爆发行情
+
+入场条件（四层过滤）：
+- 第1层：安全过滤（rug/honeypot/bundler/rat）
+- 第2层：技术面压缩（BB收窄 + 缩量 + RSI低位）
+- 第3层：聪明钱确认（≥N个聪明钱，狙击手不超标）
+- 第4层：评分门槛（综合分≥55）
 
 出场规则：
 - 硬止损 -8%
-- 止盈 +20% 减半仓
-- 移动止损：最高价回落 12%
-- 时间止损：7天
+- 移动止损：最高价回落 12%（触及 20% 利润后激活）
+- 时间止损：7天（利润<5%时）
+- 聪明钱撤退/衰退信号
+- RSI 超买出场
+- 量价背离出场（放量下跌 = 分发信号）
+- 分级利润保护（15%/25%/40% 三档，越涨回撤容忍越小）
+
+评分模型（满分 100）：
+- 技术面压缩 35分 (BB 12 + Volume 12 + RSI 11)
+- 趋势确认 10分 (EMA 排列)
+- 动量确认 10分 (MACD 柱状图)
+- 聪明钱确认 30分 (SM数量 12 + KOL 10 + 狙击手 8)
+- 安全评分 10分 (rug 4 + bundler 3 + rat 3)
+- 流动性 5分
 """
 
 import logging
@@ -80,6 +98,9 @@ class AltcoinCompressionStrategy(IStrategy):
     min_smart_money_count = IntParameter(2, 5, default=3, space="buy", optimize=True)
     max_sniper_count = IntParameter(30, 80, default=50, space="buy", optimize=True)
 
+    # 评分门槛（低于此分数不开仓）
+    min_entry_score = IntParameter(40, 70, default=55, space="buy", optimize=True)
+
     # GMGN 数据缓存
     _gmgn_cache: dict[str, tuple[dict, float]] = {}
     _gmgn_cache_ttl: int = 300  # 5分钟
@@ -92,6 +113,31 @@ class AltcoinCompressionStrategy(IStrategy):
     _snapshot_dir: str = "user_data/gmgn_history"
     _snapshot_enabled: bool = True
     _snapshot_file = None  # 当天文件句柄，按天切换
+
+    # 聪明钱历史追踪（用于衰退检测）
+    _smart_money_history: dict[str, list[int]] = {}  # pair → [count_t-2, count_t-1, count_t]
+    _smart_money_history_maxlen: int = 5
+
+    # ========== 出场参数（可优化） ==========
+    # 聪明钱衰退检测
+    smart_money_decline_threshold = DecimalParameter(
+        0.3, 0.7, default=0.5, decimals=2, space="sell", optimize=True,
+        help="聪明钱数量下降比例阈值，超过此值触发衰退信号"
+    )
+    # RSI 超买阈值
+    rsi_overbought = IntParameter(65, 85, default=75, space="sell", optimize=True)
+    # 量价背离：成交量放大倍数
+    volume_spike_multiplier = DecimalParameter(
+        2.0, 5.0, default=3.0, decimals=1, space="sell", optimize=True,
+    )
+    # 利润保护分级阈值
+    profit_tier1 = DecimalParameter(0.10, 0.20, default=0.15, decimals=2, space="sell", optimize=True)
+    profit_tier2 = DecimalParameter(0.20, 0.35, default=0.25, decimals=2, space="sell", optimize=True)
+    profit_tier3 = DecimalParameter(0.35, 0.60, default=0.40, decimals=2, space="sell", optimize=True)
+    profit_drawdown_pct = DecimalParameter(
+        0.05, 0.20, default=0.10, decimals=2, space="sell", optimize=True,
+        help="从最高利润回撤多少比例触发出场"
+    )
 
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         """
@@ -177,6 +223,7 @@ class AltcoinCompressionStrategy(IStrategy):
         第1层：安全过滤（排除垃圾币）
         第2层：技术面压缩（布林带收窄 + 缩量 + RSI 低位）
         第3层：聪明钱确认（至少 N 个聪明钱地址在买）
+        第4层：评分门槛（综合分数 >= 最低要求）
         """
         dataframe.loc[
             (
@@ -193,6 +240,8 @@ class AltcoinCompressionStrategy(IStrategy):
                 # 第3层：聪明钱确认
                 & (dataframe["smart_money_count"] >= self.min_smart_money_count.value)
                 & (dataframe["sniper_count"] < self.max_sniper_count.value)
+                # 第4层：评分门槛
+                & (dataframe["score"] >= self.min_entry_score.value)
                 # 基本数据有效性
                 & (dataframe["volume"] > 0)
             ),
@@ -203,19 +252,59 @@ class AltcoinCompressionStrategy(IStrategy):
 
     def populate_exit_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         """
-        出场信号
+        出场信号（多重出场条件，任一触发即出场）
 
-        主要靠 stoploss / trailing stop 出场。
-        额外的出场信号：聪明钱大量撤退时提前出场。
+        信号1: 聪明钱撤退 — 归零 + 安全恶化
+        信号2: 聪明钱衰退 — 数量趋势性下降
+        信号3: RSI 超买 — 涨过头了
+        信号4: 量价背离 — 放量下跌（分发信号）
         """
+        pair = metadata["pair"]
+
+        # === 信号1: 聪明钱撤退（原有逻辑，保留） ===
+        signal_smart_money_exit = (
+            (dataframe["smart_money_count"] == 0)
+            & (dataframe["rug_ratio"] > 0.2)
+        )
+
+        # === 信号2: 聪明钱衰退检测 ===
+        # 用滚动窗口检测聪明钱数量趋势性下降
+        # 如果最近3根K线的聪明钱均值比之前下降超过阈值，触发
+        sm_col = dataframe["smart_money_count"]
+        sm_ma3 = sm_col.rolling(3).mean()
+        sm_ma3_prev = sm_col.rolling(6).mean().shift(3)
+        # 衰退比例：(之前的均值 - 当前均值) / 之前均值
+        sm_decline_ratio = (sm_ma3_prev - sm_ma3) / sm_ma3_prev.replace(0, np.nan)
+        signal_smart_money_decline = (
+            (sm_decline_ratio > self.smart_money_decline_threshold.value)
+            & (sm_ma3_prev > 2)  # 之前至少有2个聪明钱才有意义
+        )
+
+        # === 信号3: RSI 超买 ===
+        signal_rsi_overbought = dataframe["rsi"] > self.rsi_overbought.value
+
+        # === 信号4: 量价背离（放量下跌） ===
+        # 当前成交量是均值的 N 倍，且收盘价低于开盘价（阴线）
+        volume_spike = dataframe["volume_ratio"] > self.volume_spike_multiplier.value
+        bearish_candle = dataframe["close"] < dataframe["open"]
+        signal_volume_divergence = volume_spike & bearish_candle
+
+        # === 合并出场信号 ===
         dataframe.loc[
             (
-                # 聪明钱撤退信号：聪明钱数量降到 0 且之前有持仓
-                (dataframe["smart_money_count"] == 0)
-                & (dataframe["rug_ratio"] > 0.2)  # 安全性也在恶化
-            ),
+                signal_smart_money_exit
+                | signal_smart_money_decline
+                | signal_rsi_overbought
+                | signal_volume_divergence
+            ) & (dataframe["volume"] > 0),
             "exit_long",
         ] = 1
+
+        # 记录出场原因到辅助列（用于日志/debug）
+        dataframe.loc[signal_smart_money_exit, "exit_tag"] = "smart_money_exit"
+        dataframe.loc[signal_smart_money_decline, "exit_tag"] = "smart_money_decline"
+        dataframe.loc[signal_rsi_overbought, "exit_tag"] = "rsi_overbought"
+        dataframe.loc[signal_volume_divergence, "exit_tag"] = "volume_divergence"
 
         return dataframe
 
@@ -225,21 +314,44 @@ class AltcoinCompressionStrategy(IStrategy):
         """
         自定义出场逻辑
 
-        - 时间止损：持仓超过 7 天且利润 < 5%，平仓
-        - 利润保护：利润超过 30% 后回落到 15%，平仓
+        1. 时间止损：持仓超过 7 天且利润 < 5%，平仓
+        2. 分级利润保护：涨越多，回撤容忍越小
+        3. 聪明钱清零 + 利润为正时快速止盈
         """
         from datetime import timedelta
 
-        # 时间止损：7天
+        # === 时间止损：7天 ===
         if current_time - trade.open_date_utc > timedelta(days=7):
             if current_profit < 0.05:
                 return "time_stop_7d"
 
-        # 利润保护
-        if current_profit > 0.30:
-            # 如果利润曾经超过 30% 但回落到 15% 以下
-            if trade.max_rate and current_rate < trade.max_rate * 0.85:
-                return "profit_protection"
+        # === 分级利润保护 ===
+        # 逻辑：利润达到某个层级后，如果从最高点回撤超过阈值，触发出场
+        # 层级越高，回撤容忍度越小
+        if trade.max_rate and trade.max_rate > 0:
+            # 计算从最高价的回撤比例
+            drawdown_from_max = (trade.max_rate - current_rate) / trade.max_rate
+
+            # 层级3：利润曾超过 40%，回撤 8% 就走
+            if current_profit > self.profit_tier3.value * 0.5:  # 当前利润还有一定水平
+                profit_peak = (trade.max_rate - trade.open_rate) / trade.open_rate
+                if profit_peak > self.profit_tier3.value:
+                    if drawdown_from_max > self.profit_drawdown_pct.value * 0.8:
+                        return "profit_protect_tier3"
+
+            # 层级2：利润曾超过 25%，回撤 10% 就走
+            elif current_profit > self.profit_tier2.value * 0.3:
+                profit_peak = (trade.max_rate - trade.open_rate) / trade.open_rate
+                if profit_peak > self.profit_tier2.value:
+                    if drawdown_from_max > self.profit_drawdown_pct.value:
+                        return "profit_protect_tier2"
+
+            # 层级1：利润曾超过 15%，回撤 15% 就走
+            elif current_profit > 0:
+                profit_peak = (trade.max_rate - trade.open_rate) / trade.open_rate
+                if profit_peak > self.profit_tier1.value:
+                    if drawdown_from_max > self.profit_drawdown_pct.value * 1.5:
+                        return "profit_protect_tier1"
 
         return None
 
@@ -247,122 +359,179 @@ class AltcoinCompressionStrategy(IStrategy):
         """
         多因子评分模型（满分 100）
 
-        技术面压缩  40分
-        聪明钱确认  35分
-        安全评分    15分
-        流动性      10分
+        技术面压缩  35分  (BB 12 + Volume 12 + RSI 11)
+        趋势确认    10分  (EMA 排列)
+        动量确认    10分  (MACD 柱状图)
+        聪明钱确认  30分  (SM数量 12 + KOL 10 + 狙击手 8)
+        安全评分    10分  (rug 4 + bundler 3 + rat 3)
+        流动性       5分  (成交量)
         """
         score = pd.Series(0, index=dataframe.index, dtype=float)
 
-        # --- 技术面压缩 (40分) ---
-        # 布林带收窄程度 (15分)
+        # --- 技术面压缩 (35分) ---
+        # 布林带收窄程度 (12分)
         bb_score = pd.Series(0, index=dataframe.index, dtype=float)
-        bb_score[dataframe["bb_width_pctl"] < 0.10] = 15
+        bb_score[dataframe["bb_width_pctl"] < 0.08] = 12
         bb_score[
-            (dataframe["bb_width_pctl"] >= 0.10) & (dataframe["bb_width_pctl"] < 0.20)
-        ] = 12
+            (dataframe["bb_width_pctl"] >= 0.08) & (dataframe["bb_width_pctl"] < 0.15)
+        ] = 10
+        bb_score[
+            (dataframe["bb_width_pctl"] >= 0.15) & (dataframe["bb_width_pctl"] < 0.20)
+        ] = 8
         bb_score[
             (dataframe["bb_width_pctl"] >= 0.20) & (dataframe["bb_width_pctl"] < 0.30)
-        ] = 8
+        ] = 5
         score += bb_score
 
-        # 成交量萎缩 (15分)
+        # 成交量萎缩 (12分)
         vol_score = pd.Series(0, index=dataframe.index, dtype=float)
-        vol_score[dataframe["volume_ratio"] < 0.3] = 15
+        vol_score[dataframe["volume_ratio"] < 0.2] = 12
         vol_score[
-            (dataframe["volume_ratio"] >= 0.3) & (dataframe["volume_ratio"] < 0.5)
-        ] = 12
+            (dataframe["volume_ratio"] >= 0.2) & (dataframe["volume_ratio"] < 0.35)
+        ] = 10
+        vol_score[
+            (dataframe["volume_ratio"] >= 0.35) & (dataframe["volume_ratio"] < 0.5)
+        ] = 8
         vol_score[
             (dataframe["volume_ratio"] >= 0.5) & (dataframe["volume_ratio"] < 0.7)
-        ] = 8
+        ] = 5
         score += vol_score
 
-        # RSI 低位 (10分)
+        # RSI 低位 (11分) — 越接近超卖区越好，但不能太低（可能是瀑布）
         rsi_score = pd.Series(0, index=dataframe.index, dtype=float)
         rsi_score[
-            (dataframe["rsi"] > 30) & (dataframe["rsi"] < 40)
-        ] = 10
+            (dataframe["rsi"] > 32) & (dataframe["rsi"] < 42)
+        ] = 11  # 最佳区间：温和偏低
         rsi_score[
-            (dataframe["rsi"] >= 40) & (dataframe["rsi"] < 50)
-        ] = 7
+            (dataframe["rsi"] >= 42) & (dataframe["rsi"] < 50)
+        ] = 8
         rsi_score[
-            (dataframe["rsi"] >= 25) & (dataframe["rsi"] <= 30)
-        ] = 5
+            (dataframe["rsi"] >= 28) & (dataframe["rsi"] <= 32)
+        ] = 7  # 接近超卖，有反弹潜力但也有风险
+        rsi_score[
+            (dataframe["rsi"] >= 50) & (dataframe["rsi"] < 55)
+        ] = 4
         score += rsi_score
 
-        # --- 聪明钱确认 (35分) ---
-        # 聪明钱数量 (15分)
+        # --- 趋势确认 (10分) ---
+        # EMA 排列：短期 > 中期 > 长期 = 多头排列
+        trend_score = pd.Series(0, index=dataframe.index, dtype=float)
+        # 完美多头排列：ema7 > ema25 > ema99
+        bullish_align = (
+            (dataframe["ema7"] > dataframe["ema25"])
+            & (dataframe["ema25"] > dataframe["ema99"])
+        )
+        # 短期在中期之上（不强求长期）
+        short_above_mid = dataframe["ema7"] > dataframe["ema25"]
+        # 价格在长期均线之上
+        price_above_long = dataframe["close"] > dataframe["ema99"]
+
+        trend_score[bullish_align] = 10
+        trend_score[~bullish_align & short_above_mid & price_above_long] = 7
+        trend_score[~bullish_align & short_above_mid & ~price_above_long] = 4
+        trend_score[~bullish_align & ~short_above_mid & price_above_long] = 2
+        score += trend_score
+
+        # --- 动量确认 (10分) ---
+        # MACD 柱状图：由负转正 = 动量反转
+        momentum_score = pd.Series(0, index=dataframe.index, dtype=float)
+        # MACD 柱状图为正且递增
+        macd_hist_positive = dataframe["macd_hist"] > 0
+        macd_hist_increasing = dataframe["macd_hist"] > dataframe["macd_hist"].shift(1)
+        # MACD 柱状图由负转正（金叉）
+        macd_cross_up = (dataframe["macd_hist"] > 0) & (dataframe["macd_hist"].shift(1) <= 0)
+
+        momentum_score[macd_cross_up] = 10
+        momentum_score[~macd_cross_up & macd_hist_positive & macd_hist_increasing] = 8
+        momentum_score[~macd_cross_up & macd_hist_positive & ~macd_hist_increasing] = 5
+        momentum_score[~macd_cross_up & ~macd_hist_positive & macd_hist_increasing] = 3
+        score += momentum_score
+
+        # --- 聪明钱确认 (30分) ---
+        # 聪明钱数量 (12分)
         sm_score = pd.Series(0, index=dataframe.index, dtype=float)
-        sm_score[dataframe["smart_money_count"] >= 5] = 15
+        sm_score[dataframe["smart_money_count"] >= 8] = 12
+        sm_score[
+            (dataframe["smart_money_count"] >= 5) & (dataframe["smart_money_count"] < 8)
+        ] = 10
         sm_score[
             (dataframe["smart_money_count"] >= 3) & (dataframe["smart_money_count"] < 5)
-        ] = 12
+        ] = 8
         sm_score[
             (dataframe["smart_money_count"] >= 1) & (dataframe["smart_money_count"] < 3)
-        ] = 8
+        ] = 5
         score += sm_score
 
         # KOL 持仓 (10分)
         kol_score = pd.Series(0, index=dataframe.index, dtype=float)
-        kol_score[dataframe["kol_count"] >= 2] = 10
-        kol_score[dataframe["kol_count"] == 1] = 7
+        kol_score[dataframe["kol_count"] >= 3] = 10
+        kol_score[dataframe["kol_count"] == 2] = 8
+        kol_score[dataframe["kol_count"] == 1] = 5
         score += kol_score
 
-        # 狙击手数量少 (10分) - 越少越好
+        # 狙击手数量少 (8分) - 越少越好
         sniper_score = pd.Series(0, index=dataframe.index, dtype=float)
-        sniper_score[dataframe["sniper_count"] < 20] = 10
+        sniper_score[dataframe["sniper_count"] < 15] = 8
         sniper_score[
-            (dataframe["sniper_count"] >= 20) & (dataframe["sniper_count"] < 50)
-        ] = 7
+            (dataframe["sniper_count"] >= 15) & (dataframe["sniper_count"] < 30)
+        ] = 6
+        sniper_score[
+            (dataframe["sniper_count"] >= 30) & (dataframe["sniper_count"] < 50)
+        ] = 4
         sniper_score[
             (dataframe["sniper_count"] >= 50) & (dataframe["sniper_count"] < 100)
-        ] = 4
+        ] = 2
         score += sniper_score
 
-        # --- 安全评分 (15分) ---
-        # rug_ratio (5分)
+        # --- 安全评分 (10分) ---
+        # rug_ratio (4分)
         rug_score = pd.Series(0, index=dataframe.index, dtype=float)
-        rug_score[dataframe["rug_ratio"] < 0.1] = 5
+        rug_score[dataframe["rug_ratio"] < 0.05] = 4
+        rug_score[
+            (dataframe["rug_ratio"] >= 0.05) & (dataframe["rug_ratio"] < 0.1)
+        ] = 3
         rug_score[
             (dataframe["rug_ratio"] >= 0.1) & (dataframe["rug_ratio"] < 0.2)
-        ] = 4
+        ] = 2
         rug_score[
             (dataframe["rug_ratio"] >= 0.2) & (dataframe["rug_ratio"] < 0.3)
-        ] = 2
+        ] = 1
         score += rug_score
 
-        # bundler_rate (5分)
+        # bundler_rate (3分)
         bundler_score = pd.Series(0, index=dataframe.index, dtype=float)
-        bundler_score[dataframe["bundler_rate"] < 0.1] = 5
+        bundler_score[dataframe["bundler_rate"] < 0.05] = 3
         bundler_score[
-            (dataframe["bundler_rate"] >= 0.1) & (dataframe["bundler_rate"] < 0.15)
-        ] = 4
-        bundler_score[
-            (dataframe["bundler_rate"] >= 0.15) & (dataframe["bundler_rate"] < 0.2)
+            (dataframe["bundler_rate"] >= 0.05) & (dataframe["bundler_rate"] < 0.1)
         ] = 2
+        bundler_score[
+            (dataframe["bundler_rate"] >= 0.1) & (dataframe["bundler_rate"] < 0.2)
+        ] = 1
         score += bundler_score
 
-        # rat_trader_rate (5分)
+        # rat_trader_rate (3分)
         rat_score = pd.Series(0, index=dataframe.index, dtype=float)
-        rat_score[dataframe["rat_trader_rate"] < 0.05] = 5
+        rat_score[dataframe["rat_trader_rate"] < 0.03] = 3
         rat_score[
-            (dataframe["rat_trader_rate"] >= 0.05) & (dataframe["rat_trader_rate"] < 0.10)
-        ] = 4
-        rat_score[
-            (dataframe["rat_trader_rate"] >= 0.10) & (dataframe["rat_trader_rate"] < 0.15)
+            (dataframe["rat_trader_rate"] >= 0.03) & (dataframe["rat_trader_rate"] < 0.08)
         ] = 2
+        rat_score[
+            (dataframe["rat_trader_rate"] >= 0.08) & (dataframe["rat_trader_rate"] < 0.15)
+        ] = 1
         score += rat_score
 
-        # --- 流动性 (10分) ---
-        # 这里用 volume 做近似（精确的买卖盘深度需要额外 API）
+        # --- 流动性 (5分) ---
         liq_score = pd.Series(0, index=dataframe.index, dtype=float)
-        liq_score[dataframe["volume"] > 500000] = 10
+        liq_score[dataframe["volume"] > 1000000] = 5
+        liq_score[
+            (dataframe["volume"] >= 500000) & (dataframe["volume"] < 1000000)
+        ] = 4
         liq_score[
             (dataframe["volume"] >= 200000) & (dataframe["volume"] < 500000)
-        ] = 7
+        ] = 3
         liq_score[
             (dataframe["volume"] >= 50000) & (dataframe["volume"] < 200000)
-        ] = 4
+        ] = 2
         score += liq_score
 
         return score
