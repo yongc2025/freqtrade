@@ -119,3 +119,5 @@ docker-compose-*.yml
 
 .history
 .github
+!user_data/strategies/AltcoinCompressionStrategy.py
+!config_gmgn.json
