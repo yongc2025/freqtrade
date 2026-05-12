@@ -49,12 +49,23 @@
   class="card bg-secondary border-0 shadow-sm mb-3"
   style="display: none"
 >
-  <div class="card-header">分析日志</div>
-  <div class="card-body">
+  <div
+    class="card-header d-flex justify-content-between align-items-center"
+  >
+    <span>分析日志</span>
+    <button
+      class="btn btn-sm btn-outline-light"
+      onclick="toggleReportLog()"
+      title="折叠/展开日志"
+    >
+      <i id="report-log-toggle-icon" class="bi bi-chevron-up"></i>
+    </button>
+  </div>
+  <div id="log-card-body" class="card-body">
     <pre
       id="log-box"
       class="mb-0 small text-light"
-      style="white-space: pre-wrap"
+      style="white-space: pre-wrap; max-height: 400px; overflow-y: auto"
     ></pre>
   </div>
 </div>

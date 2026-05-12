@@ -40,14 +40,13 @@ async def list_databases(request: Request):
 
 @router.get("/current-db")
 async def get_current_db(request: Request):
-    """获取当前正在使用的数据库文件名及初始余额"""
+    """获取当前正在使用的数据库文件名"""
     db_path = request.app.state.trade_service.db_path
-    balance = getattr(request.app.state, "starting_balance", 1000.0)
-    return {"current_db": db_path.name, "starting_balance": balance}
+    return {"current_db": db_path.name}
 
 @router.post("/switch-db")
-async def switch_database(request: Request, db_name: str, starting_balance: float = None):
-    """切换当前使用的数据库文件，并支持更新初始余额"""
+async def switch_database(request: Request, db_name: str):
+    """切换当前使用的数据库文件（金额由前端 runReport 时通过参数传入）"""
     from pathlib import Path
     
     candidates = [
@@ -65,18 +64,11 @@ async def switch_database(request: Request, db_name: str, starting_balance: floa
     if not db_path:
         raise HTTPException(status_code=404, detail=f"Database {db_name} not found")
     
-    # 更新余额状态
-    if starting_balance is not None:
-        request.app.state.starting_balance = starting_balance
-        # 强制将新的余额写回全局 state，确保 server_new.py 中的 STARTING_BALANCE 被覆盖
-        setattr(request.app.state, "starting_balance", starting_balance)
-    
     # 更新全局服务状态
     request.app.state.trade_service.db_path = db_path
-    # 确保 reporter 的 db_path 也被物理更新
     request.app.state.reporter.db_path = db_path
     
-    # 彻底清理旧数据
+    # 清理旧报告数据，避免下次加载到旧数据库的缓存
     request.app.state.reporter.data = None
     if request.app.state.reporter.output_json.exists():
         try:
@@ -84,8 +76,4 @@ async def switch_database(request: Request, db_name: str, starting_balance: floa
         except:
             pass
     
-    return {
-        "message": f"Switched to {db_name}", 
-        "path": str(db_path),
-        "starting_balance": getattr(request.app.state, "starting_balance", 1000.0)
-    }
+    return {"message": f"Switched to {db_name}", "path": str(db_path)}

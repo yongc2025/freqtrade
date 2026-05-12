@@ -383,6 +383,17 @@
     gridBox.textContent = legacyBox.textContent;
   }
 
+  function toggleReportLog() {
+    const body = document.getElementById("log-card-body");
+    const icon = document.getElementById("report-log-toggle-icon");
+    if (!body || !icon) return;
+    const collapsed = body.style.display === "none";
+    body.style.display = collapsed ? "" : "none";
+    icon.className = collapsed
+      ? "bi bi-chevron-up"
+      : "bi bi-chevron-down";
+  }
+
   function pos(v) {
     return v >= 0 ? "profit-up" : "profit-down";
   }
@@ -1508,7 +1519,12 @@
 
     const logCard = document.getElementById("log-card");
     const logBox = document.getElementById("log-box");
+    const logBody = document.getElementById("log-card-body");
     if (logCard) logCard.style.display = "";
+    if (logBody) logBody.style.display = "";
+    // 重置折叠按钮图标
+    const logIcon = document.getElementById("report-log-toggle-icon");
+    if (logIcon) logIcon.className = "bi bi-chevron-up";
     if (logBox)
       logBox.textContent = `正在启动分析 (金额: ${balance || "默认"})...\n`;
     syncReportLogTargets();
@@ -1861,4 +1877,5 @@
   };
   window.changeReportSectionPage = changeReportSectionPage;
   window.toggleReportSection = toggleReportSection;
+  window.toggleReportLog = toggleReportLog;
 })();
