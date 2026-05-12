@@ -122,3 +122,4 @@ docker-compose-*.yml
 !user_data/strategies/AltcoinCompressionStrategy.py
 !config_gmgn.json
 !config_gmgn_live.json
+!config_gmgn_dryrun.json
