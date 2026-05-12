@@ -20,14 +20,14 @@
 
 | # | 任务 | 优先级 | 状态 | 说明 |
 |---|------|--------|------|------|
-| 2.1 | 代币地址动态缓存 | P0 | 待实现 | 策略中 `_resolve_address()` 目前硬编码，需从 GMGN trending 结果缓存 symbol→address |
+| 2.1 | 代币地址动态缓存 | P0 | ✅ | PairList 获取 trending/smartmoney 时自动缓存 symbol→address 到 `user_data/gmgn_address_cache.json` |
 | 2.2 | GMGN API Key 配置 | P0 | 待用户操作 | 需去 gmgn.ai/ai 申请 Key，配置到 `~/.config/gmgn/.env` |
 | 2.3 | gmgn-cli 安装验证 | P0 | 待验证 | 确认 `npm install -g gmgn-cli` 可用 |
-| 2.4 | PairList → Strategy 地址传递 | P1 | 待实现 | GMGNPairList 获取的地址需传递给策略，避免重复查询 |
+| 2.4 | PairList → Strategy 地址传递 | P1 | ✅ | 安全数据缓存到 `user_data/gmgn_security_cache.json`，策略优先读缓存 |
 | 2.5 | 出场逻辑完善 | P1 | 待实现 | 聪明钱抛售检测、利润保护阈值调优 |
 | 2.6 | 评分模型权重调优 | P2 | 待实现 | 根据实际数据调整各因子权重 |
-| 2.7 | GMGN 数据快照记录 | P0 | 待实现 | 模拟盘运行时同步记录 GMGN 数据到 `user_data/gmgn_history/`，用于回测 |
-| 2.8 | 运行配置适配 | P1 | 待实现 | 基于用户提供的 `config_momentum_server_v1.json` 适配 GMGNPairList |
+| 2.7 | GMGN 数据快照记录 | P0 | ✅ | 模拟盘运行时同步记录 GMGN 数据到 `user_data/gmgn_history/`，用于回测 |
+| 2.8 | 运行配置适配 | P1 | ✅ | 基于 config_momentum_server_v1.json 生成 `config_gmgn_live.json` |
 
 ### 2.1 代币地址动态缓存（详细）
 
