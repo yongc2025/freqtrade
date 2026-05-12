@@ -77,7 +77,7 @@
             "max_rat_trader_rate": 0.15,
             "min_liquidity": 50000,
             "refresh_period": 3600,
-            "gmgn_cli": "C:\\Users\\yongc\\AppData\\Roaming\\npm\\gmgn-cli.cmd"
+            "gmgn_cli": "C:\\Users\\yongc20\\AppData\\Roaming\\npm\\gmgn-cli.cmd"
         }
     ],
 
