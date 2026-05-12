@@ -369,12 +369,12 @@ class AltcoinCompressionStrategy(IStrategy):
 
     def _get_gmgn_indicators(self, pair: str) -> dict:
         """
-        调用 gmgn-cli 获取链上指标（带缓存）
+        获取链上指标（带缓存）
 
-        获取 token security 和 token holders 数据，
-        提取策略所需的聪明钱和安全指标。
+        优先从 GMGNPairList 写入的安全缓存文件读取，
+        缓存未命中时才调用 gmgn-cli API。
         """
-        # 缓存检查
+        # 缓存检查（内存级）
         if pair in self._gmgn_cache:
             data, ts = self._gmgn_cache[pair]
             if time.time() - ts < self._gmgn_cache_ttl:
@@ -387,45 +387,65 @@ class AltcoinCompressionStrategy(IStrategy):
             logger.debug(f"AltcoinCompression: No address for {symbol}, using defaults")
             return {}
 
-        # 获取安全数据
-        security = self._call_cli(
-            "token", "security",
-            "--chain", self._chain,
-            "--address", address,
-            "--raw",
-        )
+        # 从安全缓存文件读取（GMGNPairList 已写入的数据）
+        sec_data = {}
+        hold_data = {}
+        try:
+            cache_path = Path("user_data/gmgn_security_cache.json")
+            if cache_path.exists():
+                with open(cache_path, "r") as f:
+                    security_cache = json.load(f)
+                if address in security_cache:
+                    cached = security_cache[address]
+                    sec_data = cached
+                    hold_data = cached  # 缓存中已包含 holders 数据
+                    logger.debug(f"AltcoinCompression: Using cached security data for {symbol}")
+        except Exception:
+            pass
 
-        # 获取持有人数据
-        holders = self._call_cli(
-            "token", "holders",
-            "--chain", self._chain,
-            "--address", address,
-            "--limit", "50",
-            "--raw",
-        )
+        # 缓存未命中部分，调用 API 补充
+        if not sec_data:
+            security = self._call_cli(
+                "token", "security",
+                "--chain", self._chain,
+                "--address", address,
+                "--raw",
+            )
+            sec_data = security.get("data", security) if security else {}
+
+        if "smart_degen_count" not in hold_data:
+            holders = self._call_cli(
+                "token", "holders",
+                "--chain", self._chain,
+                "--address", address,
+                "--limit", "50",
+                "--raw",
+            )
+            hold_data = holders.get("data", holders) if holders else {}
 
         # 提取指标
-        sec_data = security.get("data", security) if security else {}
-        hold_data = holders.get("data", holders) if holders else {}
-
         data = {
             "rug_ratio": self._safe_float(sec_data.get("rug_ratio", 0)),
             "is_honeypot": 1 if sec_data.get("is_honeypot") in (True, "true", "yes", 1) else 0,
             "bundler_rate": self._safe_float(
-                sec_data.get("bundler_trader_amount_rate", 0)
+                sec_data.get("bundler_trader_amount_rate", sec_data.get("bundler_rate", 0))
             ),
             "rat_trader_rate": self._safe_float(
-                sec_data.get("rat_trader_amount_rate", 0)
+                sec_data.get("rat_trader_amount_rate", sec_data.get("rat_trader_rate", 0))
             ),
-            "smart_money_count": int(hold_data.get("smart_degen_count", 0) or 0),
-            "kol_count": int(hold_data.get("renowned_wallets", 0) or 0),
+            "smart_money_count": int(
+                hold_data.get("smart_degen_count", hold_data.get("smart_money_count", 0)) or 0
+            ),
+            "kol_count": int(
+                hold_data.get("renowned_wallets", hold_data.get("renowned_count", 0)) or 0
+            ),
             "sniper_count": int(hold_data.get("sniper_count", 0) or 0),
             "fresh_wallet_rate": self._safe_float(
                 hold_data.get("fresh_wallet_rate", 0)
             ),
         }
 
-        # 缓存
+        # 缓存（内存级）
         self._gmgn_cache[pair] = (data, time.time())
 
         logger.info(
@@ -499,12 +519,23 @@ class AltcoinCompressionStrategy(IStrategy):
         """
         将代币符号解析为链上地址
 
-        这是一个简化实现。在实际使用中，你可能需要：
-        1. 维护一个 symbol → address 的映射表
-        2. 或者从 GMGN trending 结果中缓存地址
-        3. 或者使用 exchange 的 markets 数据
+        优先从 GMGNPairList 写入的缓存文件读取，
+        回退到硬编码的常见代币映射表。
         """
-        # 常见 Solana 代币地址映射
+        symbol_upper = symbol.upper()
+
+        # 1. 从缓存文件读取（GMGNPairList 每小时更新）
+        try:
+            cache_path = Path("user_data/gmgn_address_cache.json")
+            if cache_path.exists():
+                with open(cache_path, "r") as f:
+                    cache = json.load(f)
+                if symbol_upper in cache:
+                    return cache[symbol_upper]
+        except Exception:
+            pass
+
+        # 2. 回退到硬编码映射
         KNOWN_TOKENS = {
             "BONK": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
             "WIF": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
@@ -516,14 +547,13 @@ class AltcoinCompressionStrategy(IStrategy):
             "RENDER": "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof",
             "FET": "EzfgLF2JTWcLsXvGzGXMZKxJcFS5MvjFNz5oTwV9YLbF",
             "W": "85VBFQZC9TZkfaptBWjvUw7YbZjy52A6mjtPGjstQAmQ",
-            "PYTH": "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
             "TNSR": "TNSRxcUoT19kKGLq2uXjhKjgVQBBKXqGNdMYRcFy7J7",
             "ME": "MEFNBXixkEbait3xn9bkm8WsJzXtVZo3Bv4ujBzmER5",
             "DRIFT": "DriFtupJYLTosbwoN8koMbEYSx54aFAVLddWsbksjwg7",
             "KMNO": "KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS",
         }
 
-        return KNOWN_TOKENS.get(symbol.upper())
+        return KNOWN_TOKENS.get(symbol_upper)
 
     def _call_cli(self, *args) -> dict | None:
         """调用 gmgn-cli 并返回解析后的 JSON"""

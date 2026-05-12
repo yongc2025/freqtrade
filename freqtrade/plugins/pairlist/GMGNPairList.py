@@ -12,6 +12,7 @@ import logging
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any
 
 from freqtrade.exceptions import OperationalException
@@ -63,6 +64,17 @@ class GMGNPairList(IPairList):
         # 缓存
         self._cache: dict[str, Any] = {}
         self._cache_ttl: int = self._pairlistconfig.get("refresh_period", 3600)
+
+        # 代币地址缓存（symbol → address），写入文件供策略使用
+        self._address_cache_path: str = self._pairlistconfig.get(
+            "address_cache_path", "user_data/gmgn_address_cache.json"
+        )
+        self._address_cache: dict[str, str] = self._load_address_cache()
+
+        # 安全数据缓存（address → security data），写入文件供策略使用
+        self._security_cache_path: str = self._pairlistconfig.get(
+            "security_cache_path", "user_data/gmgn_security_cache.json"
+        )
 
     @property
     def needstickers(self) -> bool:
@@ -180,6 +192,11 @@ class GMGNPairList(IPairList):
         # 缓存结果
         self._set_cache(cache_key, pairs)
 
+        # 保存地址缓存到文件（供策略使用）
+        if self._address_cache:
+            self._save_address_cache()
+            logger.info(f"GMGNPairList: Saved {len(self._address_cache)} address mappings")
+
         return pairs.copy()
 
     def _fetch_discovery_data(self) -> tuple[list[dict], list[dict]]:
@@ -238,11 +255,17 @@ class GMGNPairList(IPairList):
         tokens = []
         for trade in trades:
             base_addr = trade.get("base_address", "")
+            base_symbol = trade.get("base_symbol", "").upper().strip()
             if base_addr and base_addr not in seen:
                 seen.add(base_addr)
+
+                # 缓存 symbol → address 映射
+                if base_symbol and base_addr:
+                    self._address_cache[base_symbol] = base_addr
+
                 tokens.append({
                     "address": base_addr,
-                    "symbol": trade.get("base_symbol", ""),
+                    "symbol": base_symbol,
                     "name": trade.get("base_name", ""),
                     "smart_degen_count": 1,
                     "source": "smartmoney",
@@ -251,10 +274,17 @@ class GMGNPairList(IPairList):
         return tokens
 
     def _extract_token_info(self, token: dict) -> dict:
-        """从 trending 响应中提取标准化的代币信息"""
+        """从 trending 响应中提取标准化的代币信息，并缓存地址映射"""
+        symbol = token.get("symbol", "").upper().strip()
+        address = token.get("address", "")
+
+        # 缓存 symbol → address 映射
+        if symbol and address:
+            self._address_cache[symbol] = address
+
         return {
-            "address": token.get("address", ""),
-            "symbol": token.get("symbol", ""),
+            "address": address,
+            "symbol": symbol,
             "name": token.get("name", ""),
             "price": token.get("price"),
             "market_cap": token.get("market_cap"),
@@ -450,6 +480,18 @@ class GMGNPairList(IPairList):
             f"(rug={rug_ratio:.2f}, bundler={bundler_rate:.2f}, rat={rat_rate:.2f})"
         )
 
+        # 缓存安全数据到文件，供策略复用
+        self._save_security_cache(address, {
+            "rug_ratio": rug_ratio,
+            "is_honeypot": 1 if is_honeypot not in (False, "false", "no", 0, "") else 0,
+            "bundler_rate": bundler_rate,
+            "rat_trader_rate": rat_rate,
+            "liquidity": liquidity,
+            "smart_degen_count": token.get("smart_degen_count", 0),
+            "renowned_count": token.get("renowned_count", 0),
+            "sniper_count": token.get("sniper_count", 0),
+        })
+
         return token
 
     def _build_pairs(self, tokens: list[dict]) -> list[str]:
@@ -515,6 +557,45 @@ class GMGNPairList(IPairList):
         except Exception as e:
             logger.warning(f"GMGNPairList: gmgn-cli error: {e}")
             return None
+
+    def _load_address_cache(self) -> dict[str, str]:
+        """从文件加载代币地址缓存"""
+        try:
+            path = Path(self._address_cache_path)
+            if path.exists():
+                with open(path, "r") as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.debug(f"GMGNPairList: Failed to load address cache: {e}")
+        return {}
+
+    def _save_address_cache(self) -> None:
+        """保存代币地址缓存到文件"""
+        try:
+            path = Path(self._address_cache_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w") as f:
+                json.dump(self._address_cache, f, indent=2)
+        except Exception as e:
+            logger.debug(f"GMGNPairList: Failed to save address cache: {e}")
+
+    def _save_security_cache(self, address: str, data: dict) -> None:
+        """保存安全数据缓存到文件，供策略复用"""
+        try:
+            path = Path(self._security_cache_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+            cache = {}
+            if path.exists():
+                with open(path, "r") as f:
+                    cache = json.load(f)
+
+            cache[address] = data
+
+            with open(path, "w") as f:
+                json.dump(cache, f, indent=2)
+        except Exception as e:
+            logger.debug(f"GMGNPairList: Failed to save security cache: {e}")
 
     def _get_cache(self, key: str) -> Any:
         """获取缓存"""
