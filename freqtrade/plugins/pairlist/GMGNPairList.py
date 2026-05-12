@@ -348,6 +348,11 @@ class GMGNPairList(IPairList):
         if not need_api_check:
             return safe
 
+        logger.info(
+            f"GMGNPairList: {len(safe)} passed local filter, "
+            f"{len(need_api_check)} need API check"
+        )
+
         # 第二轮：串行 API 安全检查（gmgn-cli 不支持并发调用）
         import time as _time
         for token in need_api_check:
