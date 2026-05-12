@@ -1,7 +1,7 @@
 # 📋 项目任务清单
 
 > **项目**: Freqtrade + GMGN 山寨币爆发捕捉系统
-> **最后更新**: 2026-05-12 22:50 CST
+> **最后更新**: 2026-05-13 01:17 CST
 
 ---
 
@@ -197,9 +197,21 @@
 
 | 阻塞项 | 影响 | 解决方式 |
 |--------|------|---------|
-| **GMGN API Key 未配置** | 无法实际运行任何 GMGN 命令 | 用户去 gmgn.ai/ai 申请 |
-| **gmgn-cli 未安装** | 无法调用 GMGN 数据 | `npm install -g gmgn-cli` |
-| **交易所 API Key 未配置** | 无法连接交易所 | 在 config_gmgn.json 中配置 |
+| **GMGN 数据源与 Binance 合约交集小** | 选出来的币大部分不在 Binance futures | 改用 Binance 数据选币（方向 A）或改 spot 模式（方向 B） |
+| **gmgn-cli 不支持并发** | 安全检查串行太慢 | 已改为串行 + 间隔，策略层兜底 |
+| **token security 端点不稳定** | 部分调用 SocketError | 已加重试 + 失败不阻断 |
+
+### 已解决的技术问题（2026-05-13）
+
+| 问题 | 解决方案 |
+|------|---------|
+| Windows GBK 编码错误 | subprocess 添加 `encoding="utf-8", errors="replace"` |
+| 代理未传递给 gmgn-cli | `_get_proxy_env()` 从 ccxt_config 读代理注入子进程 |
+| gmgn-cli 并发 SocketError | 安全检查改为串行 + 0.5s 间隔 |
+| token security 超时阻断 | 失败不阻断，放行候选，策略层做安全检查 |
+| 交易对在 Binance 不存在 | `_build_pairs()` 验证 exchange.markets |
+
+**详细改造方向见**: `docs/design/05-future-directions.md`
 
 ---
 
