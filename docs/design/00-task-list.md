@@ -26,6 +26,8 @@
 | 2.4 | PairList → Strategy 地址传递 | P1 | 待实现 | GMGNPairList 获取的地址需传递给策略，避免重复查询 |
 | 2.5 | 出场逻辑完善 | P1 | 待实现 | 聪明钱抛售检测、利润保护阈值调优 |
 | 2.6 | 评分模型权重调优 | P2 | 待实现 | 根据实际数据调整各因子权重 |
+| 2.7 | GMGN 数据快照记录 | P0 | 待实现 | 模拟盘运行时同步记录 GMGN 数据到 `user_data/gmgn_history/`，用于回测 |
+| 2.8 | 运行配置适配 | P1 | 待实现 | 基于用户提供的 `config_momentum_server_v1.json` 适配 GMGNPairList |
 
 ### 2.1 代币地址动态缓存（详细）
 
@@ -70,6 +72,49 @@
 # 3. 减少约 50% 的 API 调用
 ```
 
+### 2.7 GMGN 数据快照记录（详细）
+
+**核心思路**: 模拟盘运行时同步采集 GMGN 数据快照，积累 2-4 周后用于回测。
+
+**Freqtrade 已自动记录的数据**（无需重复）:
+- 交易记录：入场价、出场价、盈亏、持仓时间
+- 出场原因：stoploss / trailing_stop / exit_signal / custom_exit
+- 存储位置：`tradesv3.sqlite`
+
+**我们需要记录的数据**（每根K线一条 JSONL）:
+- GMGN 链上指标：smart_money_count、rug_ratio、sniper_count 等
+- 技术指标快照：bb_width_pctl、volume_ratio、rsi、score
+
+**记录格式**:
+```json
+{
+  "timestamp": 1747063200,
+  "pair": "BONK/USDT",
+  "candle": {"open": 0.0000234, "close": 0.0000241, "high": 0.0000248, "low": 0.0000230, "volume": 1250000},
+  "indicators": {"bb_width_pctl": 0.12, "volume_ratio": 0.35, "rsi": 38, "score": 72},
+  "gmgn": {"smart_money_count": 5, "rug_ratio": 0.05, "sniper_count": 12, "bundler_rate": 0.08, "rat_trader_rate": 0.03}
+}
+```
+
+**存储路径**: `user_data/gmgn_history/YYYY-MM-DD.jsonl`
+
+**实现位置**: `AltcoinCompressionStrategy.populate_indicators()` 中，计算完指标后追加写入
+
+**回测流程**:
+```
+模拟盘 2-4 周 → 积累 gmgn_history/ → 下载K线 → 回测时读取快照数据
+```
+
+### 2.8 运行配置适配（详细）
+
+**来源**: 用户提供的 `config_momentum_server_v1.json`（实盘合约配置）
+
+**与策略兼容，仅需修改两处**:
+1. `pairlists` 方法：`VolumePairList` → `GMGNPairList`
+2. 添加 `"strategy": "AltcoinCompressionStrategy"`
+
+**可复用配置**: max_open_trades=10、futures、isolated、leverage=1、pair_blacklist 等
+
 ---
 
 ## 📊 Phase 3: 回测验证
@@ -77,7 +122,7 @@
 | # | 任务 | 状态 | 说明 |
 |---|------|------|------|
 | 3.1 | 准备历史数据 | 待实现 | 选 5-10 个典型山寨币（BONK/WIF/JUP/RAY 等）下载 K 线 |
-| 3.2 | GMGN 历史数据模拟 | 待实现 | GMGN 无历史 API，需用快照或模拟值 |
+| 3.2 | GMGN 历史数据加载 | 待实现 | 从 `user_data/gmgn_history/` 读取模拟盘期间记录的快照数据 |
 | 3.3 | 单因子回测 | 待实现 | 验证每个特征（BB收窄、聪明钱等）的独立预测能力 |
 | 3.4 | 全策略回测 | 待实现 | 综合策略的收益/回撤/胜率 |
 | 3.5 | 参数优化 | 待实现 | 用 hyperopt 调整阈值和权重 |

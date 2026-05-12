@@ -164,7 +164,161 @@ gen_pairlist()
 
 ---
 
-## 3. 待完成事项
+## 3. 回测数据采集方案
+
+### 3.1 核心思路
+
+**模拟盘运行时同步采集 GMGN 数据快照，积累后用于回测。**
+
+Freqtrade 本身已自动记录交易信息（入场价、出场价、盈亏、持仓时间、出场原因等）到 `tradesv3.sqlite` 数据库。我们只需要补充记录 **GMGN 链上数据**和**技术指标快照**。
+
+### 3.2 数据分层
+
+```
+回测所需数据
+│
+├─ 层1: K线数据（已有）
+│   └─ Freqtrade 自带，从交易所下载
+│      freqtrade download-data --timeframe 1h --days 90
+│
+├─ 层2: GMGN 链上数据（需要记录）  ← 我们要做的
+│   └─ 每根K线对应的聪明钱/安全指标
+│
+└─ 层3: 交易记录（已有）
+    └─ Freqtrade 自动记录在 tradesv3.sqlite
+       包括：入场价、出场价、盈亏、持仓时间、出场原因
+```
+
+### 3.3 记录格式
+
+每根K线一条 JSONL 记录，保存到 `user_data/gmgn_history/YYYY-MM-DD.jsonl`：
+
+```json
+{
+  "timestamp": 1747063200,
+  "pair": "BONK/USDT",
+  "candle": {
+    "open": 0.0000234,
+    "close": 0.0000241,
+    "high": 0.0000248,
+    "low": 0.0000230,
+    "volume": 1250000
+  },
+  "indicators": {
+    "bb_width_pctl": 0.12,
+    "volume_ratio": 0.35,
+    "rsi": 38,
+    "score": 72
+  },
+  "gmgn": {
+    "smart_money_count": 5,
+    "kol_count": 2,
+    "rug_ratio": 0.05,
+    "is_honeypot": 0,
+    "bundler_rate": 0.08,
+    "rat_trader_rate": 0.03,
+    "sniper_count": 12,
+    "fresh_wallet_rate": 0.15
+  }
+}
+```
+
+### 3.4 实现位置
+
+在 `AltcoinCompressionStrategy.populate_indicators()` 中，每次计算完指标后追加写入：
+
+```python
+def populate_indicators(self, dataframe, metadata):
+    # ... 计算技术指标 ...
+    # ... 获取 GMGN 数据 ...
+
+    # 记录快照（每根K线）
+    self._record_snapshot(dataframe, metadata, gmgn_data)
+
+    return dataframe
+```
+
+### 3.5 回测流程
+
+```
+Step 1: 模拟盘运行 2-4 周
+  │  dry_run=true，同步记录 GMGN 数据快照
+  │  积累 user_data/gmgn_history/*.jsonl
+  │
+Step 2: 下载历史K线
+  │  freqtrade download-data --config config.json --timeframe 1h --days 90
+  │
+Step 3: 运行回测
+  │  freqtrade backtesting --config config.json --strategy AltcoinCompressionStrategy
+  │
+  │  策略的 populate_indicators() 中：
+  │  1. 先从 gmgn_history/ 读取已记录的数据
+  │  2. 命中 → 直接用（真实数据）
+  │  3. 未命中 → 用模拟值或跳过
+  │
+Step 4: 分析回测报告
+     freqtrade backtesting-show
+```
+
+### 3.6 数据文件结构
+
+```
+user_data/
+├── gmgn_history/              ← GMGN 数据快照
+│   ├── 2026-05-13.jsonl
+│   ├── 2026-05-14.jsonl
+│   └── ...
+├── gmgn_address_cache.json    ← symbol→address 映射缓存
+├── tradesv3.sqlite            ← Freqtrade 交易记录（自动）
+└── logs/                      ← Freqtrade 日志（自动）
+```
+
+---
+
+## 4. 运行配置说明
+
+### 4.1 用户提供的配置 (config_momentum_server_v1.json)
+
+该配置为**实盘合约交易**配置，关键参数：
+
+| 配置项 | 值 | 说明 |
+|--------|-----|------|
+| `dry_run` | `false` | 实盘模式 |
+| `trading_mode` | `futures` | 合约交易 |
+| `margin_mode` | `isolated` | 逐仓保证金 |
+| `leverage` | `1` | 无杠杆 |
+| `max_open_trades` | `10` | 最多同时持 10 个仓位 |
+| `stake_amount` | `unlimited` | 使用全部可用余额 |
+| `tradable_balance_ratio` | `0.95` | 95% 资金可用 |
+| `pairlist` | `VolumePairList` | 按成交量 top 40 |
+| `pair_blacklist` | BTC/ETH/SOL 等 | 排除大盘币，只做山寨 |
+
+### 4.2 与我们策略的适配
+
+该配置与 AltcoinCompressionStrategy **兼容**，只需修改两处：
+
+**1. pairlist 方法替换**：
+```json
+"pairlists": [
+    {
+        "method": "GMGNPairList",
+        "number_assets": 20,
+        "chain": "sol",
+        "refresh_period": 3600
+    }
+]
+```
+
+**2. 添加 strategy 字段**：
+```json
+"strategy": "AltcoinCompressionStrategy"
+```
+
+其余配置（max_open_trades=10、futures、isolated、黑名单等）可直接复用。
+
+---
+
+## 5. 待完成事项
 
 ### Phase 2: 特征实现 (第4-7天)
 
@@ -212,6 +366,9 @@ gen_pairlist()
 | 2026-05-12 | 本地快速过滤优先 | 减少不必要的 API 调用 |
 | 2026-05-12 | 策略层 5 分钟缓存 GMGN 数据 | 避免每根 K 线都调 API |
 | 2026-05-12 | 硬编码常见代币地址映射 | Phase 1 简化实现，后续需动态缓存 |
+| 2026-05-12 | 模拟盘同步记录 GMGN 数据快照 | GMGN 无历史 API，需自建数据用于回测 |
+| 2026-05-12 | 交易记录由 Freqtrade 自动管理 | tradesv3.sqlite 已包含完整的入场/出场/盈亏/原因信息 |
+| 2026-05-12 | 回测数据分层：K线(交易所) + GMGN(自记录) + 交易(自动) | 各层独立，职责清晰 |
 
 ---
 
