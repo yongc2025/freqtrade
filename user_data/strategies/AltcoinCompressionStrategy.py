@@ -14,9 +14,12 @@
 """
 
 import logging
+import os
 import subprocess
 import json
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -84,6 +87,11 @@ class AltcoinCompressionStrategy(IStrategy):
     # GMGN CLI 路径
     _gmgn_cli: str = "gmgn-cli"
     _chain: str = "sol"
+
+    # 数据快照记录（用于回测）
+    _snapshot_dir: str = "user_data/gmgn_history"
+    _snapshot_enabled: bool = True
+    _snapshot_file = None  # 当天文件句柄，按天切换
 
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         """
@@ -155,6 +163,10 @@ class AltcoinCompressionStrategy(IStrategy):
 
         # ========== 评分模型 ==========
         dataframe["score"] = self._calculate_score(dataframe)
+
+        # ========== 数据快照记录 ==========
+        if self._snapshot_enabled:
+            self._record_snapshot(dataframe, metadata["pair"], gmgn_data)
 
         return dataframe
 
@@ -424,6 +436,64 @@ class AltcoinCompressionStrategy(IStrategy):
         )
 
         return data
+
+    def _record_snapshot(self, dataframe: DataFrame, pair: str, gmgn_data: dict) -> None:
+        """
+        记录每根K线的 GMGN 数据快照，用于回测
+
+        按天存储到 user_data/gmgn_history/YYYY-MM-DD.jsonl
+        每条记录包含：时间戳、交易对、K线数据、技术指标、GMGN 链上数据
+        """
+        try:
+            # 确保目录存在
+            snapshot_dir = Path(self._snapshot_dir)
+            snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+            # 获取最后一根K线的数据（当前最新的）
+            last = dataframe.iloc[-1]
+            timestamp = int(dataframe.index[-1].timestamp()) if hasattr(dataframe.index[-1], 'timestamp') else int(time.time())
+
+            # 按天切换文件
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            filepath = snapshot_dir / f"{today}.jsonl"
+
+            # 构建快照记录
+            record = {
+                "timestamp": timestamp,
+                "pair": pair,
+                "candle": {
+                    "open": self._safe_float(last.get("open", 0)),
+                    "close": self._safe_float(last.get("close", 0)),
+                    "high": self._safe_float(last.get("high", 0)),
+                    "low": self._safe_float(last.get("low", 0)),
+                    "volume": self._safe_float(last.get("volume", 0)),
+                },
+                "indicators": {
+                    "bb_width": self._safe_float(last.get("bb_width", 0)),
+                    "bb_width_pctl": self._safe_float(last.get("bb_width_pctl", 0)),
+                    "volume_ratio": self._safe_float(last.get("volume_ratio", 0)),
+                    "rsi": self._safe_float(last.get("rsi", 0)),
+                    "atr": self._safe_float(last.get("atr", 0)),
+                    "score": self._safe_float(last.get("score", 0)),
+                },
+                "gmgn": {
+                    "smart_money_count": int(gmgn_data.get("smart_money_count", 0)),
+                    "kol_count": int(gmgn_data.get("kol_count", 0)),
+                    "sniper_count": int(gmgn_data.get("sniper_count", 0)),
+                    "rug_ratio": self._safe_float(gmgn_data.get("rug_ratio", 0)),
+                    "is_honeypot": int(gmgn_data.get("is_honeypot", 0)),
+                    "bundler_rate": self._safe_float(gmgn_data.get("bundler_rate", 0)),
+                    "rat_trader_rate": self._safe_float(gmgn_data.get("rat_trader_rate", 0)),
+                    "fresh_wallet_rate": self._safe_float(gmgn_data.get("fresh_wallet_rate", 0)),
+                },
+            }
+
+            # 追加写入 JSONL
+            with open(filepath, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        except Exception as e:
+            logger.debug(f"AltcoinCompression: Failed to record snapshot: {e}")
 
     def _resolve_address(self, symbol: str) -> str | None:
         """
