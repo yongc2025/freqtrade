@@ -111,3 +111,6 @@ class BotInfo(BaseModel):
     starting_balance: float = 1000.0
     dry_run: bool = True
     current_balance: Optional[float] = None
+    db_exists: bool = False
+    db_total_trades: int = 0
+    db_closed_trades: int = 0

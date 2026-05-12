@@ -782,14 +782,38 @@ async def bot_info(request: Request):
     except Exception:
         starting_balance = 1000.0
 
+    db_path = ""
+    db_exists = False
+    db_total_trades = 0
+    db_closed_trades = 0
+    try:
+        svc = getattr(request.app.state, "dashboard_trade_service", None)
+        if svc:
+            db_path = str(svc.db_path)
+            db_exists = svc.db_path.exists()
+            if db_exists:
+                import sqlite3
+                conn = sqlite3.connect(str(svc.db_path))
+                c = conn.cursor()
+                c.execute("SELECT COUNT(*) FROM trades")
+                db_total_trades = c.fetchone()[0]
+                c.execute("SELECT COUNT(*) FROM trades WHERE is_open=0")
+                db_closed_trades = c.fetchone()[0]
+                conn.close()
+    except Exception:
+        pass
+
     info = BotInfo(
         exchange=config.get("exchange", "unknown"),
         stake_currency=config.get("stake_currency", "USDT"),
         trading_mode=config.get("trading_mode", "spot"),
         run_mode=config.get("runmode", "unknown"),
-        db_path=str(getattr(request.app.state, "dashboard_trade_service", None) and request.app.state.dashboard_trade_service.db_path or ""),
+        db_path=db_path,
         starting_balance=starting_balance,
         dry_run=config.get("dry_run", True),
+        db_exists=db_exists,
+        db_total_trades=db_total_trades,
+        db_closed_trades=db_closed_trades,
     )
 
     if rpc:
