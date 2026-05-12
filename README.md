@@ -57,7 +57,7 @@ gmgn-cli market trending --chain sol --limit 3 --raw
 ### 5. 运行模拟盘
 
 ```bash
-freqtrade trade --config config_gmgn_dryrun.json
+freqtrade trade --config user_data/config_gmgn_dryrun.json
 ```
 
 模拟盘使用虚拟 10000 USDT，不需要交易所 API Key。
