@@ -348,32 +348,13 @@ class GMGNPairList(IPairList):
         if not need_api_check:
             return safe
 
+        # token security API 不稳定，跳过 API 检查
+        # 策略层 populate_indicators() 会独立做安全检查
         logger.info(
-            f"GMGNPairList: {len(safe)} passed local filter, "
-            f"{len(need_api_check)} need API check"
+            f"GMGNPairList: {len(need_api_check)} tokens skipped API check "
+            f"(strategy will verify security)"
         )
-
-        # 第二轮：串行 API 安全检查（gmgn-cli 不支持并发调用）
-        import time as _time
-        for token in need_api_check:
-            try:
-                result = self._check_token_security(token)
-                if result:
-                    safe.append(result)
-                else:
-                    # API 失败也放进来，策略层会做安全检查
-                    logger.info(
-                        f"GMGNPairList: {token.get('symbol', '?')} API check failed, "
-                        f"including anyway (strategy will verify)"
-                    )
-                    safe.append(token)
-                _time.sleep(0.5)  # 间隔 0.5s 避免限流
-            except Exception as e:
-                logger.debug(
-                    f"GMGNPairList: Security check failed for "
-                    f"{token.get('symbol', 'unknown')}: {e}"
-                )
-                safe.append(token)  # 异常也放进来
+        safe.extend(need_api_check)
 
         return safe
 
