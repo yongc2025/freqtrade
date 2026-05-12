@@ -361,17 +361,19 @@ class GMGNPairList(IPairList):
                 if result:
                     safe.append(result)
                 else:
-                    # 失败等 2 秒重试一次
-                    _time.sleep(2)
-                    result = self._check_token_security(token)
-                    if result:
-                        safe.append(result)
+                    # API 失败也放进来，策略层会做安全检查
+                    logger.info(
+                        f"GMGNPairList: {token.get('symbol', '?')} API check failed, "
+                        f"including anyway (strategy will verify)"
+                    )
+                    safe.append(token)
                 _time.sleep(0.5)  # 间隔 0.5s 避免限流
             except Exception as e:
                 logger.debug(
                     f"GMGNPairList: Security check failed for "
                     f"{token.get('symbol', 'unknown')}: {e}"
                 )
+                safe.append(token)  # 异常也放进来
 
         return safe
 
@@ -568,7 +570,7 @@ class GMGNPairList(IPairList):
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=30,
+                timeout=10,
                 env=proc_env,
                 shell=True,
             )
