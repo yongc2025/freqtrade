@@ -14,6 +14,9 @@
     "dry_run_wallet": 10000,
 
     "timeframe": "1h",
+    "bot_name": "GMGN-Altcoin-DryRun",
+    "initial_state": "running",
+    "force_entry_enable": false,
 
     "trailing_stop": true,
     "trailing_stop_positive": 0.12,
@@ -25,35 +28,76 @@
         "0": 100
     },
 
-    "unfilledtimeout": {
-        "entry": 10,
-        "exit": 10,
-        "unit": "minutes"
+    "order_types": {
+        "entry": "limit",
+        "exit": "limit",
+        "time_in_force": "ioc",
+        "stoploss": "market",
+        "stoploss_on_exchange": true
     },
 
     "entry_pricing": {
-        "price_side": "same",
+        "price_side": "other",
+        "use_order_book": true,
+        "order_book_top": 1,
+        "check_depth_of_market": {
+            "enabled": false,
+            "bids_to_ask_delta": 1
+        }
+    },
+
+    "exit_pricing": {
+        "price_side": "other",
         "use_order_book": true,
         "order_book_top": 1
     },
 
-    "exit_pricing": {
-        "price_side": "same",
-        "use_order_book": true,
-        "order_book_top": 1
+    "unfilledtimeout": {
+        "entry": 10,
+        "exit": 10,
+        "exit_timeout_count": 0
     },
 
     "exchange": {
         "name": "binance",
         "key": "",
         "secret": "",
-        "pair_whitelist": [],
         "ccxt_config": {
+            "timeout": 30000,
             "proxies": {
                 "http": "http://127.0.0.1:10808",
                 "https": "http://127.0.0.1:10808"
+            },
+            "options": {
+                "defaultType": "future"
             }
         },
+        "ccxt_async_config": {
+            "timeout": 30000,
+            "aiohttp_trust_env": false,
+            "aiohttp_proxy": "http://127.0.0.1:10808",
+            "options": {
+                "defaultType": "future"
+            }
+        },
+        "pair_whitelist": [],
+        "pair_blacklist": [
+            "(BSC)/.*",
+            ".*REWARD/.*",
+            ".*BEAR/.*",
+            ".*BULL/.*",
+            ".*UP/.*",
+            ".*DOWN/.*",
+            ".*BNB/.*",
+            "BTC/USDT:USDT",
+            "ETH/USDT:USDT",
+            "SOL/USDT:USDT",
+            "XRP/USDT:USDT",
+            "BNB/USDT:USDT",
+            "TRX/USDT:USDT",
+            "ADA/USDT:USDT",
+            "DOGE/USDT:USDT"
+        ],
         "pairlist": [
             {
                 "method": "GMGNPairList",
@@ -71,8 +115,8 @@
         ]
     },
 
-    "bot_name": "GMGN-Altcoin-DryRun",
-    "initial_state": "running",
+    "db_url": "sqlite:///user_data/tradesv3_gmgn_dryrun.sqlite?check_same_thread=False",
+    "logfile": "user_data/logs/freqtrade_gmgn_dryrun.log",
 
     "internals": {
         "process_throttle_secs": 5
