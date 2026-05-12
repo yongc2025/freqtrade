@@ -48,6 +48,12 @@
         "key": "",
         "secret": "",
         "pair_whitelist": [],
+        "ccxt_config": {
+            "proxies": {
+                "http": "http://127.0.0.1:10808",
+                "https": "http://127.0.0.1:10808"
+            }
+        },
         "pairlist": [
             {
                 "method": "GMGNPairList",
