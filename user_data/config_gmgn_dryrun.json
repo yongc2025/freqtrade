@@ -58,6 +58,22 @@
         "exit_timeout_count": 0
     },
 
+    "pairlists": [
+        {
+            "method": "GMGNPairList",
+            "number_assets": 20,
+            "chain": "sol",
+            "trending_limit": 30,
+            "smartmoney_limit": 20,
+            "max_workers": 10,
+            "max_rug_ratio": 0.3,
+            "max_bundler_rate": 0.2,
+            "max_rat_trader_rate": 0.15,
+            "min_liquidity": 50000,
+            "refresh_period": 3600
+        }
+    ],
+
     "exchange": {
         "name": "binance",
         "key": "",
@@ -97,21 +113,6 @@
             "TRX/USDT:USDT",
             "ADA/USDT:USDT",
             "DOGE/USDT:USDT"
-        ],
-        "pairlists": [
-            {
-                "method": "GMGNPairList",
-                "number_assets": 20,
-                "chain": "sol",
-                "trending_limit": 30,
-                "smartmoney_limit": 20,
-                "max_workers": 10,
-                "max_rug_ratio": 0.3,
-                "max_bundler_rate": 0.2,
-                "max_rat_trader_rate": 0.15,
-                "min_liquidity": 50000,
-                "refresh_period": 3600
-            }
         ]
     },
 
