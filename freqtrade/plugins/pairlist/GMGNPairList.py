@@ -355,6 +355,12 @@ class GMGNPairList(IPairList):
                 result = self._check_token_security(token)
                 if result:
                     safe.append(result)
+                else:
+                    # 失败等 2 秒重试一次
+                    _time.sleep(2)
+                    result = self._check_token_security(token)
+                    if result:
+                        safe.append(result)
                 _time.sleep(0.5)  # 间隔 0.5s 避免限流
             except Exception as e:
                 logger.debug(
@@ -559,12 +565,14 @@ class GMGNPairList(IPairList):
                 errors="replace",
                 timeout=30,
                 env=proc_env,
+                shell=True,
             )
 
             if result.returncode != 0:
                 logger.warning(
                     f"GMGNPairList: gmgn-cli returned code {result.returncode}: "
-                    f"{result.stderr[:200]}"
+                    f"CMD: {' '.join(cmd[:5])}... "
+                    f"STDERR: {result.stderr[:300]}"
                 )
                 return None
 
