@@ -76,7 +76,8 @@
             "max_bundler_rate": 0.2,
             "max_rat_trader_rate": 0.15,
             "min_liquidity": 50000,
-            "refresh_period": 3600
+            "refresh_period": 3600,
+            "gmgn_cli": "gmgn-cli"
         }
     ],
 
