@@ -52,7 +52,7 @@ class GMGNPairList(IPairList):
         self._stake_currency: str = self._config.get("stake_currency", "USDT")
         self._trending_limit: int = self._pairlistconfig.get("trending_limit", 30)
         self._smartmoney_limit: int = self._pairlistconfig.get("smartmoney_limit", 20)
-        self._max_workers: int = self._pairlistconfig.get("max_workers", 10)
+        self._max_workers: int = self._pairlistconfig.get("max_workers", 3)
         self._gmgn_cli: str = self._pairlistconfig.get("gmgn_cli", "gmgn-cli")
 
         # 安全过滤阈值
@@ -379,11 +379,10 @@ class GMGNPairList(IPairList):
         rug_ratio = token.get("rug_ratio")
         is_wash_trading = token.get("is_wash_trading")
         liquidity = token.get("liquidity")
-        smart_degen_count = token.get("smart_degen_count", 0)
 
-        # 如果关键安全字段缺失，需要 API 检查
-        if rug_ratio is None or is_wash_trading is None:
-            return False
+        # rug_ratio 有值就能本地判断，不需要 API
+        if rug_ratio is None:
+            return False  # 缺 rug_ratio，需要 API 补查
 
         # 快速淘汰
         if is_wash_trading is True or is_wash_trading == "true":
@@ -393,7 +392,7 @@ class GMGNPairList(IPairList):
         if liquidity is not None and liquidity < self._min_liquidity:
             return False
 
-        return True
+        return True  # rug_ratio 正常 + 流动性够 → 直接通过，无需 API
 
     def _check_token_security(self, token: dict) -> dict | None:
         """
@@ -563,7 +562,7 @@ class GMGNPairList(IPairList):
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=15,
+                timeout=30,
                 env=proc_env,
             )
 
