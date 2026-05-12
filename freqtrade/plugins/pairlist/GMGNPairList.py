@@ -348,24 +348,19 @@ class GMGNPairList(IPairList):
         if not need_api_check:
             return safe
 
-        # 第二轮：并发 API 安全检查
-        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
-            future_to_token = {
-                executor.submit(self._check_token_security, t): t
-                for t in need_api_check
-            }
-
-            for future in as_completed(future_to_token, timeout=30):
-                token = future_to_token[future]
-                try:
-                    result = future.result()
-                    if result:
-                        safe.append(result)
-                except Exception as e:
-                    logger.debug(
-                        f"GMGNPairList: Security check failed for "
-                        f"{token.get('symbol', 'unknown')}: {e}"
-                    )
+        # 第二轮：串行 API 安全检查（gmgn-cli 不支持并发调用）
+        import time as _time
+        for token in need_api_check:
+            try:
+                result = self._check_token_security(token)
+                if result:
+                    safe.append(result)
+                _time.sleep(0.5)  # 间隔 0.5s 避免限流
+            except Exception as e:
+                logger.debug(
+                    f"GMGNPairList: Security check failed for "
+                    f"{token.get('symbol', 'unknown')}: {e}"
+                )
 
         return safe
 
