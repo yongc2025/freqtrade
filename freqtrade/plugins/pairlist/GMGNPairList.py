@@ -502,9 +502,18 @@ class GMGNPairList(IPairList):
         return token
 
     def _build_pairs(self, tokens: list[dict]) -> list[str]:
-        """将通过过滤的代币转换为 Freqtrade 交易对格式"""
+        """将通过过滤的代币转换为 Freqtrade 交易对格式，并验证交易所是否有该交易对"""
         pairs = []
         seen = set()
+
+        # 获取交易所可用市场（用于验证）
+        try:
+            markets = self._exchange.markets
+            available_symbols = set(markets.keys()) if markets else set()
+        except Exception:
+            available_symbols = set()
+
+        trading_mode = self._config.get("trading_mode", "spot")
 
         for token in tokens:
             symbol = token.get("symbol", "").upper().strip()
@@ -515,10 +524,22 @@ class GMGNPairList(IPairList):
             if symbol in ("USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD"):
                 continue
 
-            pair = f"{symbol}/{self._stake_currency}"
-            if pair not in seen:
-                seen.add(pair)
-                pairs.append(pair)
+            # 根据交易模式生成交易对格式
+            if trading_mode == "futures":
+                pair = f"{symbol}/{self._stake_currency}:{self._stake_currency}"
+            else:
+                pair = f"{symbol}/{self._stake_currency}"
+
+            if pair in seen:
+                continue
+
+            # 验证交易所是否有该交易对
+            if available_symbols and pair not in available_symbols:
+                logger.debug(f"GMGNPairList: {pair} not available on exchange, skipping")
+                continue
+
+            seen.add(pair)
+            pairs.append(pair)
 
         return pairs
 
