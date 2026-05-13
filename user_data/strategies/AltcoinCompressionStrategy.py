@@ -49,6 +49,10 @@ import pandas as pd
 import talib.abstract as ta
 from pandas import DataFrame
 
+# 信号日志路径
+SIGNAL_LOG_DIR = Path("user_data/logs")
+SIGNAL_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 from freqtrade.strategy import IStrategy, DecimalParameter, IntParameter
 
 
