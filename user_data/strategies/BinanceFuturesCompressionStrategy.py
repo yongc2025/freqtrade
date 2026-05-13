@@ -902,74 +902,120 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         出场信号（分层退出，任一触发即出场）
 
         做多出场：
-          1. 资金费率反转 > 0.03%（多头拥挤）
-          2. OI 暴跌 > -5%（资金撤离）
-          3. 大户多空比 < 0.5（大户翻空）
-          4. RSI > 75（超买）
-          5. 布林带宽度扩大 > 2x（波动率爆发）
+          A. 合约数据信号（实盘有效）：
+            1. 资金费率反转 > 阈值（多头拥挤）
+            2. OI 暴跌（资金撤离）
+            3. 大户多空比翻空
+          B. 技术面信号（回测+实盘都能触发）：
+            4. RSI 超买
+            5. 布林带宽度扩张
+            6. MACD 死叉（histogram 转负）
+            7. 收盘价跌破 EMA7（短期趋势反转）
 
-        做空出场（对称）：
-          1. 资金费率反转 < -0.03%（空头拥挤）
-          2. OI 暴跌 > -5%
-          3. 大户多空比 > 2.0（大户翻多）
-          4. RSI < 25（超卖）
-          5. 布林带宽度扩大 > 2x
+        做空出场（对称）
         """
         pair = metadata["pair"]
 
-        # === 做多出场信号 ===
+        # ========== 做多出场信号 ==========
 
-        # 信号1: 资金费率反转（多头拥挤）
+        # A. 合约数据信号（实盘有效，回测中通常不触发）
         signal_fr_long = dataframe["funding_rate"] > self.funding_rate_exit_long.value
-
-        # 信号2: OI 暴跌
         signal_oi_drop = dataframe["oi_change_pct"] < self.oi_drop_threshold.value * 100
-
-        # 信号3: 大户翻空
         signal_ls_flip_long = dataframe["top_ls_ratio"] < self.ls_ratio_exit_threshold.value
 
-        # 信号4: RSI 超买
+        # B. 技术面信号（回测中能实际触发）
+
+        # 信号4: RSI 超买（放宽到 65，原来 75 太极端）
         signal_rsi_ob = dataframe["rsi"] > self.rsi_overbought.value
 
-        # 信号5: 布林带宽度扩大（用滚动最大值估算入场时的宽度）
+        # 信号5: 布林带宽度扩张
         bb_width_ma5 = dataframe["bb_width"].rolling(5).mean()
         bb_width_ma20_min = dataframe["bb_width"].rolling(20).min()
         signal_bb_expand = (
             bb_width_ma5 > bb_width_ma20_min * self.bb_width_expansion.value
         )
 
+        # 信号6: MACD 死叉 — histogram 从正转负（动量衰竭）
+        signal_macd_cross_down = (
+            (dataframe["macd_hist"] < 0)
+            & (dataframe["macd_hist"].shift(1) >= 0)
+        )
+
+        # 信号7: 收盘价跌破 EMA7（短期趋势反转，压缩策略入场后价格跌破短期均线应离场）
+        signal_price_below_ema7 = (
+            (dataframe["close"] < dataframe["ema7"])
+            & (dataframe["close"].shift(1) >= dataframe["ema7"].shift(1))
+        )
+
+        # 信号8: RSI 从高位回落（RSI 曾超过 60 后跌破 55）
+        rsi_ma5 = dataframe["rsi"].rolling(5).mean()
+        signal_rsi_falling = (
+            (dataframe["rsi"] < 55)
+            & (rsi_ma5.shift(3) > 60)
+        )
+
         exit_long_condition = (
-            (signal_fr_long | signal_oi_drop | signal_ls_flip_long | signal_rsi_ob | signal_bb_expand)
+            (
+                signal_fr_long | signal_oi_drop | signal_ls_flip_long
+                | signal_rsi_ob | signal_bb_expand
+                | signal_macd_cross_down | signal_price_below_ema7 | signal_rsi_falling
+            )
             & (dataframe["volume"] > 0)
         )
 
         dataframe.loc[exit_long_condition, "exit_long"] = 1
 
-        # 记录出场原因（按优先级）
+        # 记录出场原因（按优先级，后写覆盖先写，所以重要度低的先写）
+        dataframe.loc[signal_rsi_falling, "exit_tag"] = "rsi_falling_from_high"
+        dataframe.loc[signal_price_below_ema7, "exit_tag"] = "price_below_ema7"
+        dataframe.loc[signal_macd_cross_down, "exit_tag"] = "macd_death_cross"
         dataframe.loc[signal_rsi_ob, "exit_tag"] = "rsi_overbought"
         dataframe.loc[signal_bb_expand, "exit_tag"] = "bb_width_expand"
         dataframe.loc[signal_ls_flip_long, "exit_tag"] = "ls_ratio_flip_short"
         dataframe.loc[signal_oi_drop, "exit_tag"] = "oi_drop"
         dataframe.loc[signal_fr_long, "exit_tag"] = "funding_rate_high"
 
-        # === 做空出场信号 ===
+        # ========== 做空出场信号 ==========
 
-        # 信号1: 资金费率反转（空头拥挤）
+        # A. 合约数据
         signal_fr_short = dataframe["funding_rate"] < self.funding_rate_exit_short.value
-
-        # 信号3: 大户翻多
         signal_ls_flip_short = dataframe["top_ls_ratio"] > (1.0 / self.ls_ratio_exit_threshold.value)
 
-        # 信号4: RSI 超卖
+        # B. 技术面
         signal_rsi_os = dataframe["rsi"] < self.rsi_oversold.value
 
+        # MACD 金叉 — histogram 从负转正
+        signal_macd_cross_up = (
+            (dataframe["macd_hist"] > 0)
+            & (dataframe["macd_hist"].shift(1) <= 0)
+        )
+
+        # 收盘价突破 EMA7（做空时价格涨破短期均线应离场）
+        signal_price_above_ema7 = (
+            (dataframe["close"] > dataframe["ema7"])
+            & (dataframe["close"].shift(1) <= dataframe["ema7"].shift(1))
+        )
+
+        # RSI 从低位回升
+        signal_rsi_rising = (
+            (dataframe["rsi"] > 45)
+            & (rsi_ma5.shift(3) < 40)
+        )
+
         exit_short_condition = (
-            (signal_fr_short | signal_oi_drop | signal_ls_flip_short | signal_rsi_os | signal_bb_expand)
+            (
+                signal_fr_short | signal_oi_drop | signal_ls_flip_short
+                | signal_rsi_os | signal_bb_expand
+                | signal_macd_cross_up | signal_price_above_ema7 | signal_rsi_rising
+            )
             & (dataframe["volume"] > 0)
         )
 
         dataframe.loc[exit_short_condition, "exit_short"] = 1
 
+        dataframe.loc[signal_rsi_rising, "exit_tag_short"] = "rsi_rising_from_low"
+        dataframe.loc[signal_price_above_ema7, "exit_tag_short"] = "price_above_ema7"
+        dataframe.loc[signal_macd_cross_up, "exit_tag_short"] = "macd_golden_cross"
         dataframe.loc[signal_rsi_os, "exit_tag_short"] = "rsi_oversold"
         dataframe.loc[signal_bb_expand, "exit_tag_short"] = "bb_width_expand"
         dataframe.loc[signal_ls_flip_short, "exit_tag_short"] = "ls_ratio_flip_long"
@@ -1063,6 +1109,13 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         "take_profit": "止盈(+8%)",
         "time_stop_5d": "时间止损(持仓5天且利润<3%)",
         "stoploss": "硬止损(-3%)",
+        # 新增技术面出场原因
+        "macd_death_cross": "MACD死叉(动量衰竭,趋势反转)",
+        "macd_golden_cross": "MACD金叉(做空动量衰竭)",
+        "price_below_ema7": "价格跌破EMA7(短期趋势反转)",
+        "price_above_ema7": "价格突破EMA7(做空趋势反转)",
+        "rsi_falling_from_high": "RSI从高位回落(超买后走弱)",
+        "rsi_rising_from_low": "RSI从低位回升(超卖后反弹)",
     }
 
     def _write_trade_log(
