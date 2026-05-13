@@ -36,7 +36,7 @@ COMMODITY_TOKENS = {"PAXG", "XAUT", "XAU", "GLD"}
 # 1000x 前缀代币 (低价 meme 币的 1000 倍面值)
 # 这些代币的合约地址与原生代币相同，如 1000SHIB 的地址 = SHIB 的地址
 # 如果需要保留，设为 False 即可跳过前缀但不跳过原生代币
-FILTER_1000X = True
+FILTER_1000X = False
 
 
 def strip_multiplier_prefix(symbol: str) -> str:
