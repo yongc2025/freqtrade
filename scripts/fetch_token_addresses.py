@@ -38,6 +38,17 @@ COMMODITY_TOKENS = {"PAXG", "XAUT", "XAU", "GLD"}
 FILTER_1000X = True
 
 
+def strip_multiplier_prefix(symbol: str) -> str:
+    """去掉 1000x 前缀，返回原生代币 symbol
+    1000SHIB -> SHIB, 1000000MOG -> MOG, ADA -> ADA
+    """
+    if symbol.startswith("1000000"):
+        return symbol[7:]
+    if symbol.startswith("1000"):
+        return symbol[4:]
+    return symbol
+
+
 def should_skip_symbol(symbol: str) -> bool:
     """判断是否跳过该代币"""
     # 稳定币
@@ -202,11 +213,20 @@ def main():
         return
 
     # 建立 symbol → list of coin_id 映射
+    # 注意: 1000x 前缀代币需要去掉前缀再匹配 CoinGecko
+    # binance_symbol (如 1000SHIB) 作为 key，匹配 CoinGecko 的原生 symbol (如 SHIB)
+    binance_set = set(binance_symbols)
     symbol_to_coins: dict[str, list[dict]] = {}
     for coin in cg_coins:
-        sym = coin.get("symbol", "").upper()
-        if sym in binance_symbols:
-            symbol_to_coins.setdefault(sym, []).append(coin)
+        cg_sym = coin.get("symbol", "").upper()
+        # 直接匹配
+        if cg_sym in binance_set:
+            symbol_to_coins.setdefault(cg_sym, []).append(coin)
+        # 1000x 前缀匹配: CoinGecko symbol "SHIB" 匹配 Binance "1000SHIB"
+        for prefix in ("1000000", "1000"):
+            prefixed = prefix + cg_sym
+            if prefixed in binance_set:
+                symbol_to_coins.setdefault(prefixed, []).append(coin)
 
     print(f"  匹配到 {len(symbol_to_coins)} 个 Binance 期货代币")
 
