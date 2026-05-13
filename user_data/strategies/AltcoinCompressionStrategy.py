@@ -755,252 +755,26 @@ class AltcoinCompressionStrategy(IStrategy):
         """
         将代币符号解析为链上地址（多链回退）
 
-        按 _chains 优先级依次查找，返回 (address, chain)。
-        优先从缓存文件读取，回退到内置映射表。
+        从 user_data/token_addresses.json 读取（由 fetch_token_addresses.py 生成）。
+        按 _chains 优先级查找，返回 (address, chain)。
         """
         symbol_upper = symbol.upper()
 
-        # 1. 从缓存文件读取
+        # 从 token_addresses.json 读取
         try:
-            cache_path = Path("user_data/gmgn_address_cache.json")
+            cache_path = Path("user_data/token_addresses.json")
             if cache_path.exists():
                 with open(cache_path, "r") as f:
-                    cache = json.load(f)
-                if symbol_upper in cache:
-                    val = cache[symbol_upper]
-                    if isinstance(val, dict):
-                        # 新格式: {"bsc": "0x...", "eth": "0x...", "sol": "..."}
-                        for chain in self._chains:
-                            if chain in val and val[chain]:
-                                return val[chain], chain
-                    elif isinstance(val, str):
-                        # 旧格式: 直接是地址字符串，假设是 Solana
-                        return val, "sol"
-        except Exception:
-            pass
+                    token_db = json.load(f)
+                entry = token_db.get(symbol_upper)
+                if entry and isinstance(entry, dict):
+                    for chain in self._chains:
+                        if chain in entry and entry[chain]:
+                            return entry[chain], chain
+        except Exception as e:
+            logger.debug(f"AltcoinCompression: Failed to read token_addresses.json: {e}")
 
-        # 2. 内置映射表（多链）
-        # 格式: symbol → {chain: address, ...}
-        # BSC/ETH 用 0x 地址，Solana 用 base58
-        KNOWN_TOKENS = {
-            # --- Solana 原生 meme/DeFi ---
-            "BONK": {
-                "sol": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-                "bsc": "0xA697e272a73744b343528C3Bc4702F2565b2F422",
-            },
-            "WIF": {
-                "sol": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
-                "bsc": "0x27C4e45d3B7F4D3E3E3E3E3E3E3E3E3E3E3E3E3E",
-            },
-            "JUP": {
-                "sol": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
-            },
-            "RAY": {
-                "sol": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
-                "bsc": "0x4E20D036A6b2E4Fb86E073751c9aA2E1B2E0D0C4",
-            },
-            "ORCA": {"sol": "orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE"},
-            "PYTH": {
-                "sol": "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
-                "bsc": "0x9d5B4A4b5B4A4b5B4A4b5B4A4b5B4A4b5B4A4b5B",
-            },
-            "JTO": {"sol": "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL"},
-            "RENDER": {
-                "sol": "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof",
-                "eth": "0x6De037ef9aD2725EB40118Bb1702EBb27e4Aeb24",
-                "bsc": "0x28012691541C560B6EF3f43b8C78D8C0B4aDC80f",
-            },
-            "FET": {
-                "eth": "0xaea46A60368A7bD060eec7DF8CBa43b7EF41Ad85",
-                "bsc": "0x031b41e504677879370e9DBcF937283A8691Fa7f",
-            },
-            "W": {
-                "sol": "85VBFQZC9TZkfaptBWjvUw7YbZjy52A6mjtPGjstQAmQ",
-                "eth": "0xB0fFa8000886e57F86dd5264b9582b2Ad87b2b91",
-                "bsc": "0xB0fFa8000886e57F86dd5264b9582b2Ad87b2b91",
-            },
-            "TNSR": {"sol": "TNSRxcUoT19kKGLq2uXjhKjgVQBBKXqGNdMYRcFy7J7"},
-            "ME": {"sol": "MEFNBXixkEbait3xn9bkm8WsJzXtVZo3Bv4ujBzmER5"},
-            "DRIFT": {"sol": "DriFtupJYLTosbwoN8koMbEYSx54aFAVLddWsbksjwg7"},
-            "KMNO": {"sol": "KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS"},
-
-            # --- Binance 期货常见币（BSC/ETH 地址） ---
-            "BNB": {"bsc": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"},
-            "SOL": {"sol": "So11111111111111111111111111111111111111112"},
-            "DOGE": {
-                "bsc": "0xbA2aE424d960c26247Dd6c32edCcf0Baf13C0f39",
-                "eth": "0x3832d2F059E55934220881F831bE501D180671A7",
-            },
-            "ADA": {
-                "bsc": "0x3EE2200Efb3400fAbB9AacF31297cBDD1d435D47",
-                "eth": "0x3EE2200Efb3400fAbB9AacF31297cBDD1d435D47",
-            },
-            "XRP": {
-                "bsc": "0x1D2F0da169ceB9fC7B3144628dB156f3F6c60dBE",
-            },
-            "AVAX": {
-                "bsc": "0x1CE0c2827e2eF14D5C4f29a091d735A204794041",
-                "eth": "0x85f138bfEE4ef8e540890CFb48F620571d67Eda3",
-            },
-            "LINK": {
-                "bsc": "0xF8A0BF9cF54Bb92F17374d9e9A321E6a111a51bD",
-                "eth": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
-            },
-            "DOT": {
-                "bsc": "0x7083609fCE4d1d8Dc0C979AAb8c869Ea2C873402",
-                "eth": "0x7083609fCE4d1d8Dc0C979AAb8c869Ea2C873402",
-            },
-            "MATIC": {
-                "bsc": "0xCC42724C6683B7E57334c4E856f4c9965ED682bD",
-                "eth": "0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0",
-            },
-            "UNI": {
-                "bsc": "0xBf5140A22578168FD562DCcF235E5D43A02ce9B1",
-                "eth": "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
-            },
-            "AAVE": {
-                "bsc": "0xfb6115445Bff7b52FeB98650C87f44907E58f802",
-                "eth": "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9",
-            },
-            "FIL": {
-                "bsc": "0x0D8Ce2A99Bb6e3B7Db580eD848240e4a0F9aE115",
-            },
-            "NEAR": {
-                "bsc": "0x1Fa4a73a3F0133f0a2530C2Feee19d6A88b3e599",
-            },
-            "ARB": {
-                "eth": "0xB50721BCf8d664c30412Cfbc6cf7a15145234ad1",
-            },
-            "OP": {
-                "eth": "0x4200000000000000000000000000000000000042",
-            },
-            "SUI": {
-                "bsc": "0x53E1eE5a5F8b4c4F4e4D4C4b4A49484746454443",
-            },
-            "SEI": {
-                "bsc": "0x53E1eE5a5F8b4c4F4e4D4C4b4A49484746454443",
-            },
-            "TIA": {
-                "eth": "0x3Ad60c606e7c3e8BFa9E5e1D8C2e7dC1b9B9c563",
-            },
-            "INJ": {
-                "bsc": "0xe28b3B32B6c345A34Ff64674606124Dd5Aceca30",
-                "eth": "0xe28b3B32B6c345A34Ff64674606124Dd5Aceca30",
-            },
-            "FET": {
-                "eth": "0xaea46A60368A7bD060eec7DF8CBa43b7EF41Ad85",
-                "bsc": "0x031b41e504677879370e9DBcF937283A8691Fa7f",
-            },
-            "AGIX": {
-                "eth": "0x5B7533812759B45C2B44C19e320ba2cD2681b542",
-            },
-            "PEPE": {
-                "eth": "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-                "bsc": "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbB00",
-            },
-            "WLD": {
-                "eth": "0x163f8C2467924be0ae7B5347228CABF260318753",
-            },
-            "ENA": {
-                "eth": "0x57e114B691Db790C35207b2e685D4A43181e6061",
-                "bsc": "0x57e114B691Db790C35207b2e685D4A43181e6061",
-            },
-            "ONDO": {
-                "eth": "0xfAbA6f8e4a5E8Ab82F62fe7C39859FA577269BE3",
-            },
-            "PENDLE": {
-                "eth": "0x808507121B80c02388fAd14726482e061B8da827",
-                "bsc": "0xb3Ed0A426155B79B735065E693D18115f40d3b79",
-            },
-            "STX": {
-                "bsc": "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbB00",
-            },
-            "JASMY": {
-                "eth": "0x7420B4b9a0110cdC71fB720908340C03F9Bc03EC",
-            },
-            "GALA": {
-                "eth": "0xd1d2Eb1B1e90B638588728b4130137D262C87cae",
-                "bsc": "0x7dDEE176F665cD201F93eEDE625770E2fD911321",
-            },
-            "SAND": {
-                "eth": "0x3845badAde8e6dFF049820680d1F14bD3903a5d0",
-                "bsc": "0x67b725d7e342d7B611fa85e8Ab96fC29a8689876",
-            },
-            "MANA": {
-                "eth": "0x0F5D2fB29fb7d3CFeE444a200298f468908cC942",
-                "bsc": "0x26433c81572a01b18501032d4F1D2c1c3E6e1e59",
-            },
-            "ALGO": {
-                "bsc": "0x4fA1A08B9f4C5EEd3f6fdbFbB27De2aE3b2C5693",
-            },
-            "ATOM": {
-                "bsc": "0x0Eb3a705fc54725037CC9e008bDede697f62F335",
-            },
-            "FTM": {
-                "bsc": "0xAD29AbB318791D579433D831ed122aFeAf29dcfe",
-                "eth": "0x4E15361FD6b4BB609Fa63C81A2be19d873717870",
-            },
-            "APT": {
-                "bsc": "0x3Ad60c606e7c3e8BFa9E5e1D8C2e7dC1b9B9c563",
-            },
-            "IMX": {
-                "eth": "0xF57e7e7C23978C3cAEC3C3548E3D615c346e79fF",
-            },
-            "LDO": {
-                "eth": "0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32",
-            },
-            "MKR": {
-                "eth": "0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2",
-            },
-            "RUNE": {
-                "bsc": "0xa9776B590bfc2f956711b3419910A5Ec1F63153e",
-            },
-            "EGLD": {
-                "bsc": "0xbF7c81FFF98BbE61B40Ed186e4AfD6DDd01337fe",
-            },
-            "GRT": {
-                "eth": "0xc944E90C64B2c07662A292be6244BDf05Cda44a7",
-                "bsc": "0x3Fe5DBC3aEd5e0C23c3DdD6291E6401F89a3627c",
-            },
-            "CFX": {
-                "bsc": "0x045c4324039dA91c52C55DF5D785385Aab073DcF",
-            },
-            "ARKM": {
-                "eth": "0x256D1fCE1b1221e8398f65F9B36033CE50B2D497",
-            },
-            "BLUR": {
-                "eth": "0x5283D291DBCF85356A21bA090E6db59121208b44",
-            },
-            "BIGTIME": {
-                "eth": "0x64Bc2cA1Be492bE7185FAA2c8835d9b824c8a194",
-            },
-            "PIXEL": {
-                "eth": "0x3429d03c6F7521AeC737a0BBF2E5ddcef2FB3A0f",
-            },
-            "STRK": {
-                "eth": "0xCa14007Eff0dB1f8135f4C25B34De49AB0d42766",
-            },
-            "ALT": {
-                "eth": "0x8457CA5040ad67fdebbCC8EdCE889A335Bc0fbFB",
-            },
-            "MANTA": {
-                "eth": "0x95CeF13441Be50d2D0d25888d1B5Ed184e559e3a",
-            },
-            "WIF": {
-                "sol": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
-            },
-        }
-
-        entry = KNOWN_TOKENS.get(symbol_upper)
-        if entry is None:
-            return None, ""
-        if isinstance(entry, dict):
-            for chain in self._chains:
-                if chain in entry and entry[chain]:
-                    return entry[chain], chain
-            return None, ""
-        return entry, "sol"  # fallback for old string format
-
+        return None, ""
     def _call_cli(self, *args) -> dict | None:
         """调用 gmgn-cli 并返回解析后的 JSON"""
         cmd = [self._gmgn_cli] + list(args)
