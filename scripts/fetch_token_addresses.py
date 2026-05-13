@@ -164,6 +164,15 @@ def get_coingecko_coin_detail(coin_id: str) -> dict | None:
     return None
 
 
+def save_output(cache: dict):
+    """生成输出文件（只包含有地址的）"""
+    result = {k: v for k, v in cache.items() if v}
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2, ensure_ascii=False)
+    return len(result)
+
+
 def extract_addresses(detail: dict, platform_map: dict) -> dict:
     """从代币详情中提取地址"""
     platforms = detail.get("platforms", {})
@@ -250,6 +259,7 @@ def main():
     if pre_filled:
         print(f"  ⚡ 从列表预填充 {pre_filled} 个代币地址 (无需额外请求)")
         save_cache(cache)
+        save_output(cache)
 
     # Step 3: 对缓存中没有的代币逐个获取详情
     need_fetch = {sym: coins for sym, coins in symbol_to_coins.items() if sym not in cache}
@@ -300,25 +310,23 @@ def main():
                     print("⏭️ 无地址")
                     skipped += 1
 
-            # 每处理 20 个保存一次缓存
+            # 每处理 20 个保存一次缓存和输出
             if i % 20 == 0:
                 save_cache(cache)
+                save_output(cache)
 
             # 正常限速
             time.sleep(REQUEST_INTERVAL)
 
         save_cache(cache)
+        save_output(cache)
         print(f"\n  📊 详情请求结果: 成功 {fetched} | 跳过 {skipped} | 失败 {failed}")
 
-    # 生成最终输出 (只包含有地址的)
-    result = {k: v for k, v in cache.items() if v}
-
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
+    # 最终输出
+    result_count = save_output(cache)
 
     print(f"\n{'=' * 60}")
-    print(f"✅ 完成! 共 {len(result)} 个代币有地址")
+    print(f"✅ 完成! 共 {result_count} 个代币有地址")
     print(f"📄 输出: {OUTPUT_PATH}")
     print(f"📦 缓存: {CACHE_PATH} ({len(cache)} 条)")
     print(f"{'=' * 60}")
