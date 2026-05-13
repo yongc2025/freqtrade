@@ -353,9 +353,24 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         # 所以在出场逻辑里用滚动窗口估算
 
     def on_trade_close(self, trade, order, **kwargs) -> None:
-        """平仓时清理"""
+        """平仓时清理 + 记录止损日志"""
         self._open_trade_pairs.discard(trade.pair)
         self._entry_bb_width.pop(trade.pair, None)
+
+        # 捕获止损出场（freqtrade 自动执行，不经过 custom_exit）
+        exit_reason = getattr(trade, "exit_reason", "")
+        if exit_reason and exit_reason not in ("take_profit", "time_stop_5d"):
+            hold_seconds = int((trade.close_date_utc - trade.open_date_utc).total_seconds()) if trade.close_date_utc else 0
+            profit_pct = round(trade.calc_profit_ratio() * 100, 2) if trade.calc_profit_ratio() else 0
+            self._write_trade_log(
+                action="exit",
+                pair=trade.pair,
+                direction="short" if trade.is_short else "long",
+                price=trade.close_rate or 0,
+                exit_reason=exit_reason,
+                profit_pct=profit_pct,
+                hold_seconds=hold_seconds,
+            )
 
     # ========== 指标计算 ==========
 
@@ -661,17 +676,42 @@ class BinanceFuturesCompressionStrategy(IStrategy):
             signal_key = f"{pair}_{last_idx}_{direction}_entry"
             if dataframe.at[last_idx, cond_col] == 1 and signal_key not in self._logged_signals:
                 row = dataframe.loc[last_idx]
+                score_val = self._safe_float(row.get("score", 0))
+                score_t = self._safe_float(row.get("score_tech", 0))
+                score_c = self._safe_float(row.get("score_contract", 0))
+                src = str(row.get("signal_source", "degraded"))
+
+                # 写交易日志（中文详细）
+                self._write_trade_log(
+                    action="entry",
+                    pair=pair,
+                    direction=direction,
+                    price=self._safe_float(row.get("close", 0)),
+                    score_total=score_val,
+                    score_tech=score_t,
+                    score_contract=score_c,
+                    bb_width_pctl=self._safe_float(row.get("bb_width_pctl", 0)),
+                    volume_ratio=self._safe_float(row.get("volume_ratio", 0)),
+                    rsi=self._safe_float(row.get("rsi", 0)),
+                    funding_rate=self._safe_float(row.get("funding_rate", 0)),
+                    oi_change_pct=self._safe_float(row.get("oi_change_pct", 0)),
+                    top_ls_ratio=self._safe_float(row.get("top_ls_ratio", 0)),
+                    taker_ls_ratio=self._safe_float(row.get("taker_ls_ratio", 0)),
+                    signal_source=src,
+                )
+
+                # 写 JSONL 信号日志（程序分析用）
                 self._write_signal_log({
                     "time": str(last_idx),
                     "pair": pair,
                     "direction": direction,
                     "action": "entry",
                     "price": self._safe_float(row.get("close", 0)),
-                    "signal_source": str(row.get("signal_source", "degraded")),
+                    "signal_source": src,
                     "score": {
-                        "total": round(self._safe_float(row.get("score", 0)), 1),
-                        "tech": round(self._safe_float(row.get("score_tech", 0)), 1),
-                        "contract": round(self._safe_float(row.get("score_contract", 0)), 1),
+                        "total": round(score_val, 1),
+                        "tech": round(score_t, 1),
+                        "contract": round(score_c, 1),
                     },
                     "tech": {
                         "bb_width_pctl": round(self._safe_float(row.get("bb_width_pctl", 0)), 3),
@@ -781,13 +821,29 @@ class BinanceFuturesCompressionStrategy(IStrategy):
             has_trade = pair in self._open_trade_pairs
             if has_trade and dataframe.at[last_idx, exit_col] == 1 and signal_key not in self._logged_signals:
                 row = dataframe.loc[last_idx]
+                exit_reason = str(row.get(tag_col, "unknown"))
+
+                # 写交易日志（中文详细）
+                self._write_trade_log(
+                    action="exit",
+                    pair=pair,
+                    direction=direction,
+                    price=self._safe_float(row.get("close", 0)),
+                    exit_reason=exit_reason,
+                    rsi=self._safe_float(row.get("rsi", 0)),
+                    bb_width_pctl=self._safe_float(row.get("bb_width_pctl", 0)),
+                    funding_rate=self._safe_float(row.get("funding_rate", 0)),
+                    top_ls_ratio=self._safe_float(row.get("top_ls_ratio", 0)),
+                )
+
+                # 写 JSONL 信号日志
                 self._write_signal_log({
                     "time": str(last_idx),
                     "pair": pair,
                     "direction": direction,
                     "action": "exit",
                     "price": self._safe_float(row.get("close", 0)),
-                    "exit_reason": str(row.get(tag_col, "unknown")),
+                    "exit_reason": exit_reason,
                     "contract": {
                         "funding_rate": round(self._safe_float(row.get("funding_rate", 0)), 6),
                         "oi_change_pct": round(self._safe_float(row.get("oi_change_pct", 0)), 2),
@@ -824,10 +880,25 @@ class BinanceFuturesCompressionStrategy(IStrategy):
                 exit_reason = "time_stop_5d"
 
         if exit_reason:
+            direction = "short" if trade.is_short else "long"
+            hold_seconds = int((current_time - trade.open_date_utc).total_seconds())
+
+            # 写交易日志
+            self._write_trade_log(
+                action="exit",
+                pair=pair,
+                direction=direction,
+                price=current_rate,
+                exit_reason=exit_reason,
+                profit_pct=round(current_profit * 100, 2),
+                hold_seconds=hold_seconds,
+            )
+
+            # 写 JSONL 信号日志
             self._write_signal_log({
                 "time": str(current_time),
                 "pair": pair,
-                "direction": "long" if not trade.is_short else "short",
+                "direction": direction,
                 "action": "exit",
                 "price": current_rate,
                 "profit_pct": round(current_profit * 100, 2),
@@ -839,83 +910,173 @@ class BinanceFuturesCompressionStrategy(IStrategy):
 
     # ========== 日志工具 ==========
 
-    def _write_signal_log(self, record: dict) -> None:
-        """写入信号日志"""
+    # 离场原因中文映射
+    _EXIT_REASON_CN = {
+        "rsi_overbought": "RSI超买(>75)",
+        "rsi_oversold": "RSI超卖(<25)",
+        "bb_width_expand": "布林带宽度扩大>2倍(波动率爆发,行情走完)",
+        "ls_ratio_flip_short": "大户多空比<0.5(大户翻空)",
+        "ls_ratio_flip_long": "大户多空比>2.0(大户翻多)",
+        "oi_drop": "持仓量暴跌>5%(资金撤离)",
+        "funding_rate_high": "资金费率>0.03%(多头极度拥挤,回调风险)",
+        "funding_rate_low": "资金费率<-0.03%(空头极度拥挤,反弹风险)",
+        "take_profit": "止盈(+8%)",
+        "time_stop_5d": "时间止损(持仓5天且利润<3%)",
+        "stoploss": "硬止损(-3%)",
+    }
+
+    def _write_trade_log(
+        self,
+        action: str,
+        pair: str,
+        direction: str,
+        price: float,
+        entry_reason: str = "",
+        exit_reason: str = "",
+        score_total: float = 0,
+        score_tech: float = 0,
+        score_contract: float = 0,
+        bb_width_pctl: float = 0,
+        volume_ratio: float = 0,
+        rsi: float = 0,
+        funding_rate: float = 0,
+        oi_change_pct: float = 0,
+        top_ls_ratio: float = 0,
+        taker_ls_ratio: float = 0,
+        signal_source: str = "",
+        profit_pct: float = 0,
+        hold_seconds: int = 0,
+    ) -> None:
+        """
+        写入专用交易日志
+
+        文件：user_data/logs/trades_bf_YYYY-MM-DD.log
+        格式：纯中文，每笔交易一行，清晰易读
+        """
         try:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            logpath = self._signal_log_dir / f"trades_bf_{today}.log"
 
-            # JSONL
+            direction_cn = "做多" if direction == "long" else "做空"
+            pair_short = pair.replace("/USDT:USDT", "").replace("/USDT", "")
+
+            if action == "entry":
+                mode_cn = "完整模式(95分制)" if signal_source == "full" else "降级模式(60分制)"
+
+                # 拼接入场原因
+                reasons = []
+                if bb_width_pctl < 0.08:
+                    reasons.append("BB极度压缩")
+                elif bb_width_pctl < 0.15:
+                    reasons.append("BB高度压缩")
+                elif bb_width_pctl < 0.20:
+                    reasons.append("BB中度压缩")
+
+                if volume_ratio < 0.2:
+                    reasons.append("极度缩量")
+                elif volume_ratio < 0.35:
+                    reasons.append("明显缩量")
+                elif volume_ratio < 0.5:
+                    reasons.append("缩量")
+
+                if 32 < rsi < 42:
+                    reasons.append("RSI低位")
+                elif 42 <= rsi < 50:
+                    reasons.append("RSI中低位")
+
+                if funding_rate <= -0.0001:
+                    reasons.append("费率极负(空头拥挤)")
+                elif funding_rate <= -0.00005:
+                    reasons.append("费率偏负")
+
+                if oi_change_pct > 3:
+                    reasons.append("OI大增(大资金入场)")
+                elif oi_change_pct > 2:
+                    reasons.append("OI增加")
+
+                if top_ls_ratio > 1.5:
+                    reasons.append("大户明显做多")
+                elif top_ls_ratio > 1.2:
+                    reasons.append("大户偏多")
+
+                if taker_ls_ratio < 0.8:
+                    reasons.append("Taker卖压过度")
+
+                reason_str = "、".join(reasons) if reasons else "综合达标"
+
+                line = (
+                    f"{'='*70}\n"
+                    f"📌 入场 | {now_str}\n"
+                    f"   方向: {direction_cn} {pair_short}\n"
+                    f"   价格: {price:.4f} USDT\n"
+                    f"   评分: {score_total:.0f}分 ({mode_cn})\n"
+                    f"     ├─ 技术面: {score_tech:.0f}/60\n"
+                    f"     └─ 合约数据: {score_contract:.0f}/35\n"
+                    f"   入场原因: {reason_str}\n"
+                    f"   指标详情:\n"
+                    f"     ├─ BB分位: {bb_width_pctl:.3f}  量比: {volume_ratio:.2f}  RSI: {rsi:.1f}\n"
+                    f"     └─ 费率: {funding_rate:.6f}  OI变化: {oi_change_pct:+.1f}%  大户多空比: {top_ls_ratio:.2f}  Taker比: {taker_ls_ratio:.2f}\n"
+                )
+
+            elif action == "exit":
+                exit_reason_cn = self._EXIT_REASON_CN.get(exit_reason, exit_reason)
+                hold_str = self._format_hold_time(hold_seconds)
+
+                # 利润颜色标记
+                if profit_pct > 0:
+                    profit_str = f"✅ +{profit_pct:.2f}%"
+                elif profit_pct < 0:
+                    profit_str = f"❌ {profit_pct:.2f}%"
+                else:
+                    profit_str = f"±0.00%"
+
+                line = (
+                    f"{'='*70}\n"
+                    f"📤 出场 | {now_str}\n"
+                    f"   方向: {direction_cn} {pair_short}\n"
+                    f"   价格: {price:.4f} USDT\n"
+                    f"   结果: {profit_str}\n"
+                    f"   持仓: {hold_str}\n"
+                    f"   离场原因: {exit_reason_cn}\n"
+                    f"   当前指标:\n"
+                    f"     ├─ RSI: {rsi:.1f}  BB分位: {bb_width_pctl:.3f}\n"
+                    f"     └─ 费率: {funding_rate:.6f}  大户多空比: {top_ls_ratio:.2f}\n"
+                )
+            else:
+                return
+
+            with open(logpath, "a", encoding="utf-8") as f:
+                f.write(line)
+
+        except Exception as e:
+            logger.debug(f"BinanceFuturesCompression: Failed to write trade log: {e}")
+
+    @staticmethod
+    def _format_hold_time(seconds: int) -> str:
+        """格式化持仓时间"""
+        if seconds < 60:
+            return f"{seconds}秒"
+        elif seconds < 3600:
+            return f"{seconds // 60}分钟"
+        elif seconds < 86400:
+            hours = seconds // 3600
+            mins = (seconds % 3600) // 60
+            return f"{hours}小时{mins}分钟" if mins else f"{hours}小时"
+        else:
+            days = seconds // 86400
+            hours = (seconds % 86400) // 3600
+            return f"{days}天{hours}小时" if hours else f"{days}天"
+
+    def _write_signal_log(self, record: dict) -> None:
+        """写入信号日志（JSONL 格式，供程序分析）"""
+        try:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             filepath = self._signal_log_dir / f"signals_bf_{today}.jsonl"
             with open(filepath, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
-
-            # 可读日志
-            logpath = self._signal_log_dir / f"signals_bf_{today}.log"
-            readable = self._format_signal_readable(record)
-            with open(logpath, "a", encoding="utf-8") as f:
-                f.write(readable + "\n")
         except Exception as e:
             logger.debug(f"BinanceFuturesCompression: Failed to write signal log: {e}")
-
-    def _format_signal_readable(self, record: dict) -> str:
-        """格式化为中文可读"""
-        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        action = record.get("action", "")
-        pair = record.get("pair", "")
-        direction = record.get("direction", "")
-        price = record.get("price", 0)
-
-        direction_cn = "做多" if direction == "long" else "做空"
-
-        if action == "entry":
-            score = record.get("score", {})
-            tech = record.get("tech", {})
-            contract = record.get("contract", {})
-            src = "完整" if record.get("signal_source") == "full" else "降级"
-            return (
-                f"{now_str} | [入场] {direction_cn} {pair} @ {price:.4f} | "
-                f"模式={src} | "
-                f"总分={score.get('total', 0):.0f} 技术={score.get('tech', 0):.0f} 合约={score.get('contract', 0):.0f} | "
-                f"BB_pctl={tech.get('bb_width_pctl', 0):.3f} 量比={tech.get('volume_ratio', 0):.2f} RSI={tech.get('rsi', 0):.1f} | "
-                f"费率={contract.get('funding_rate', 0):.6f} OI变化={contract.get('oi_change_pct', 0):.1f}% "
-                f"多空比={contract.get('top_ls_ratio', 0):.2f} Taker={contract.get('taker_ls_ratio', 0):.2f}"
-            )
-
-        elif action == "exit":
-            exit_reason = record.get("exit_reason", "")
-            reason_cn = {
-                "rsi_overbought": "RSI超买",
-                "rsi_oversold": "RSI超卖",
-                "bb_width_expand": "布林带扩张",
-                "ls_ratio_flip_short": "大户翻空",
-                "ls_ratio_flip_long": "大户翻多",
-                "oi_drop": "OI暴跌",
-                "funding_rate_high": "费率过高",
-                "funding_rate_low": "费率过低",
-                "take_profit": "止盈",
-                "time_stop_5d": "5天时间止损",
-            }.get(exit_reason, exit_reason)
-
-            parts = [
-                f"{now_str} | [出场] {direction_cn} {pair} @ {price:.4f}",
-                f"原因={reason_cn}",
-            ]
-
-            profit_pct = record.get("profit_pct")
-            if profit_pct is not None:
-                parts.append(f"利润={profit_pct:.1f}%")
-
-            contract = record.get("contract", {})
-            if contract:
-                parts.append(
-                    f"费率={contract.get('funding_rate', 0):.6f} "
-                    f"多空比={contract.get('top_ls_ratio', 0):.2f} "
-                    f"RSI={contract.get('rsi', 0):.1f}"
-                )
-
-            return " | ".join(parts)
-
-        return str(record)
 
     @staticmethod
     def _safe_float(value) -> float:
