@@ -231,6 +231,22 @@ def _http_get_with_retry(base_url: str, params: dict, max_retries: int):
     raise RuntimeError(f"超过最大重试次数 ({max_retries})")
 
 
+def _call_fapi_with_fallback(exchange, method_name: str, params: dict, max_retries: int = 3):
+    """
+    带 startTime 降级的 fapi 调用。
+    某些 fapiData 接口对 startTime 格式敏感（新币上市时间不足），
+    失败时自动去掉 startTime 重试（取最近数据）。
+    """
+    try:
+        return _call_fapi(exchange, method_name, params, max_retries)
+    except Exception as e:
+        err_str = str(e)
+        if "startTime" in err_str or "-1130" in err_str:
+            fallback = {k: v for k, v in params.items() if k != "startTime"}
+            return _call_fapi(exchange, method_name, fallback, max_retries)
+        raise
+
+
 def download_funding_rate(exchange, symbol: str, days: int) -> pd.DataFrame:
     """下载资金费率历史"""
     bsymbol = symbol.replace("/", "").replace(":USDT", "")
@@ -276,7 +292,7 @@ def download_oi_history(exchange, symbol: str, days: int) -> pd.DataFrame:
     all_data = []
     while True:
         try:
-            resp = _call_fapi(exchange, "fapiPublicGetOpenInterestHist", {
+            resp = _call_fapi_with_fallback(exchange, "fapiPublicGetOpenInterestHist", {
                 "symbol": bsymbol,
                 "period": "5m",
                 "startTime": since,
@@ -315,7 +331,7 @@ def download_top_ls_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
     all_data = []
     while True:
         try:
-            resp = _call_fapi(exchange, "fapiPublicGetTopLongShortPositionRatio", {
+            resp = _call_fapi_with_fallback(exchange, "fapiPublicGetTopLongShortPositionRatio", {
                 "symbol": bsymbol,
                 "period": "5m",
                 "startTime": since,
@@ -353,7 +369,7 @@ def download_taker_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
     all_data = []
     while True:
         try:
-            resp = _call_fapi(exchange, "fapiPublicGetTakerlongshortRatio", {
+            resp = _call_fapi_with_fallback(exchange, "fapiPublicGetTakerlongshortRatio", {
                 "symbol": bsymbol,
                 "period": "5m",
                 "startTime": since,
