@@ -562,10 +562,11 @@ class AltcoinCompressionStrategy(IStrategy):
 
     def _format_signal_readable(self, record: dict) -> str:
         """将信号记录格式化为中文可读文本"""
+        # 在 .log 里加真实时间戳
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         action = record.get("action", "")
         pair = record.get("pair", "")
         price = record.get("price", 0)
-        time_str = record.get("time", "")
 
         # 来源翻译
         source_cn = {
@@ -577,7 +578,7 @@ class AltcoinCompressionStrategy(IStrategy):
             score = record.get("score", {})
             tech = record.get("tech", {})
             parts = [
-                f"[入场] {pair} @ {price:.4f}",
+                f"[入场] {pair} @ {price:.4f} | {now_str}",
                 f"来源={source_cn}",
                 f"总分={score.get('total', 0):.0f}/{score.get('max', 0)}",
                 f"BB_pctl={tech.get('bb_width_pctl', 0):.3f}",

@@ -1,114 +1,177 @@
 {
-    "$schema": "https://schema.freqtrade.io/schema.json",
-    "strategy": "AltcoinCompressionStrategy",
-    "user_data_dir": "user_data",
-    "max_open_trades": 5,
-    "stake_currency": "USDT",
-    "stake_amount": "unlimited",
-    "tradable_balance_ratio": 0.75,
-    "fiat_display_currency": "USD",
-    "dry_run": true,
-    "dry_run_wallet": 10000,
-    "timeframe": "1h",
-    "bot_name": "GMGN-Altcoin-DryRun-v2",
-    "initial_state": "running",
-    "force_entry_enable": false,
-    "trailing_stop": true,
-    "trailing_stop_positive": 0.12,
-    "trailing_stop_positive_offset": 0.2,
-    "trailing_only_offset_is_reached": true,
-    "stoploss": -0.08,
-    "minimal_roi": {
-        "0": 100
-    },
-    "trading_mode": "futures",
-    "margin_mode": "isolated",
-    "leverage": 1,
-    "liquidation_buffer": 0.05,
-    "fee": 0.0005,
-    "order_types": {
-        "entry": "limit",
-        "exit": "limit",
-        "time_in_force": "ioc",
-        "stoploss": "market",
-        "stoploss_on_exchange": true
-    },
-    "entry_pricing": {
-        "price_side": "other",
-        "use_order_book": true,
-        "order_book_top": 1,
-        "check_depth_of_market": {
-            "enabled": false,
-            "bids_to_ask_delta": 1
-        }
-    },
-    "exit_pricing": {
-        "price_side": "other",
-        "use_order_book": true,
-        "order_book_top": 1
-    },
-    "unfilledtimeout": {
-        "entry": 10,
-        "exit": 10,
-        "exit_timeout_count": 0
-    },
-    "pairlists": [
-        {
-            "method": "VolumePairList",
-            "number_assets": 40,
-            "sort_key": "quoteVolume",
-            "refresh_period": 900
-        },
-        {
-            "method": "AgeFilter",
-            "min_days_listed": 30
-        }
-    ],
-    "exchange": {
-        "name": "binance",
-        "key": "",
-        "secret": "",
-        "type": "futures",
-        "ccxt_config": {
-            "timeout": 30000,
-            "proxies": {
-                "http": "http://127.0.0.1:10808",
-                "https": "http://127.0.0.1:10808"
-            },
-            "options": {
-                "defaultType": "future"
-            }
-        },
-        "ccxt_async_config": {
-            "timeout": 30000,
-            "aiohttp_trust_env": false,
-            "aiohttp_proxy": "http://127.0.0.1:10808",
-            "options": {
-                "defaultType": "future"
-            }
-        },
-        "pair_whitelist": [],
-        "pair_blacklist": [
-            "(BSC)/.*",
-            ".*REWARD/.*",
-            ".*BEAR/.*",
-            ".*BULL/.*",
-            ".*UP/.*",
-            ".*DOWN/.*",
-            ".*BNB/.*",
-            "BTC/USDT:USDT",
-            "ETH/USDT:USDT",
-            "SOL/USDT:USDT",
-            "XRP/USDT:USDT",
-            "BNB/USDT:USDT",
-            "TRX/USDT:USDT",
-            "ADA/USDT:USDT",
-            "DOGE/USDT:USDT"
-        ]
-    },
-    "db_url": "sqlite:///user_data/tradesv3_gmgn_dryrun.sqlite?check_same_thread=False",
-    "logfile": "user_data/logs/freqtrade_gmgn_dryrun.log",
-    "internals": {
-        "process_throttle_secs": 5
+  "$schema": "https://schema.freqtrade.io/schema.json",
+  "strategy": "AltcoinCompressionStrategy",
+  "user_data_dir": "user_data",
+  "max_open_trades": 5,
+  "stake_currency": "USDT",
+  "stake_amount": "unlimited",
+  "tradable_balance_ratio": 0.75,
+  "fiat_display_currency": "",
+  "dry_run": true,
+  "dry_run_wallet": 10000,
+  "timeframe": "1h",
+  "bot_name": "GMGN-Altcoin-DryRun-v2",
+  "initial_state": "running",
+  "force_entry_enable": false,
+  "trailing_stop": true,
+  "trailing_stop_positive": 0.12,
+  "trailing_stop_positive_offset": 0.2,
+  "trailing_only_offset_is_reached": true,
+  "stoploss": -0.08,
+  "minimal_roi": {
+    "0": 100
+  },
+  "trading_mode": "futures",
+  "margin_mode": "isolated",
+  "leverage": 1,
+  "liquidation_buffer": 0.05,
+  "fee": 0.0005,
+  "order_types": {
+    "entry": "limit",
+    "exit": "limit",
+    "time_in_force": "ioc",
+    "stoploss": "market",
+    "stoploss_on_exchange": true
+  },
+  "entry_pricing": {
+    "price_side": "other",
+    "use_order_book": true,
+    "order_book_top": 1,
+    "check_depth_of_market": {
+      "enabled": false,
+      "bids_to_ask_delta": 1
     }
+  },
+  "exit_pricing": {
+    "price_side": "other",
+    "use_order_book": true,
+    "order_book_top": 1
+  },
+  "unfilledtimeout": {
+    "entry": 10,
+    "exit": 10,
+    "exit_timeout_count": 0
+  },
+  "pairlists": [
+    {
+      "method": "VolumePairList",
+      "number_assets": 80,
+      "sort_key": "quoteVolume",
+      "refresh_period": 3600
+    },
+    {
+      "method": "AgeFilter",
+      "min_days_listed": 30
+    }
+  ],
+  "exchange": {
+    "name": "binance",
+    "key": "",
+    "secret": "",
+    "type": "futures",
+    "ccxt_config": {
+      "timeout": 30000,
+      "proxies": {
+        "http": "http://127.0.0.1:10808",
+        "https": "http://127.0.0.1:10808"
+      },
+      "options": {
+        "defaultType": "future"
+      }
+    },
+    "ccxt_async_config": {
+      "timeout": 30000,
+      "aiohttp_trust_env": false,
+      "aiohttp_proxy": "http://127.0.0.1:10808",
+      "options": {
+        "defaultType": "future"
+      }
+    },
+    "pair_whitelist": [],
+    "pair_blacklist": [
+      "(BSC)/.*",
+      ".*REWARD/.*",
+      ".*BEAR/.*",
+      ".*BULL/.*",
+      ".*UP/.*",
+      ".*DOWN/.*",
+      ".*BNB/.*",
+      "BTC/USDT:USDT",
+      "ETH/USDT:USDT",
+      "SOL/USDT:USDT",
+      "XRP/USDT:USDT",
+      "BNB/USDT:USDT",
+      "TRX/USDT:USDT",
+      "ADA/USDT:USDT",
+      "DOGE/USDT:USDT",
+      "AVAX/USDT:USDT",
+      "TON/USDT:USDT",
+      "SUI/USDT:USDT",
+      "LINK/USDT:USDT",
+      "DOT/USDT:USDT",
+      "MATIC/USDT:USDT",
+      "UNI/USDT:USDT",
+      "LTC/USDT:USDT",
+      "BCH/USDT:USDT",
+      "ATOM/USDT:USDT",
+      "XLM/USDT:USDT",
+      "ETC/USDT:USDT",
+      "FIL/USDT:USDT",
+      "NEAR/USDT:USDT",
+      "APT/USDT:USDT",
+      "ARB/USDT:USDT",
+      "OP/USDT:USDT",
+      "AAVE/USDT:USDT",
+      "MKR/USDT:USDT",
+      "CRV/USDT:USDT",
+      "1000PEPE/USDT:USDT",
+      "1000SHIB/USDT:USDT",
+      "1000BONK/USDT:USDT",
+      "1000FLOKI/USDT:USDT",
+      "WIF/USDT:USDT",
+      "XAU/USDT:USDT",
+      "XAG/USDT:USDT",
+      "CL/USDT:USDT",
+      "BZ/USDT:USDT",
+      "NG/USDT:USDT",
+      "ES/USDT:USDT",
+      "NQ/USDT:USDT",
+      "YM/USDT:USDT",
+      "RTY/USDT:USDT",
+      "NKD/USDT:USDT",
+      "INTC/USDT:USDT",
+      "EWY/USDT:USDT",
+      "EWJ/USDT:USDT",
+      "EWW/USDT:USDT",
+      "EWZ/USDT:USDT",
+      "FXI/USDT:USDT",
+      "BABA/USDT:USDT",
+      "TSM/USDT:USDT",
+      "NVDA/USDT:USDT",
+      "AAPL/USDT:USDT",
+      "TSLA/USDT:USDT",
+      "GOOGL/USDT:USDT",
+      "AMZN/USDT:USDT",
+      "META/USDT:USDT",
+      "MSFT/USDT:USDT",
+      "COIN/USDT:USDT",
+      "MSTR/USDT:USDT"
+    ]
+  },
+  "api_server": {
+    "enabled": true,
+    "listen_ip_address": "0.0.0.0",
+    "listen_port": 8081,
+    "verbosity": "error",
+    "enable_openapi": false,
+    "jwt_secret_key": "momentum_local_bt_secret_key",
+    "CORS_origins": ["http://localhost:8081", "http://127.0.0.1:8081"],
+    "username": "admin",
+    "password": "your_password_here"
+  },
+  "db_url": "sqlite:///user_data/tradesv3_gmgn_dryrun.sqlite?check_same_thread=False",
+  "logfile": "user_data/logs/freqtrade_gmgn_dryrun.log",
+  "internals": {
+    "process_throttle_secs": 5
+  }
 }

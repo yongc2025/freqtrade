@@ -24,5 +24,7 @@ _ = exchange.load_markets()
 lev_tiers = exchange.fetch_leverage_tiers()
 
 # Assumes this is running in the root of the repository.
-file = Path("freqtrade/exchange/binance_leverage_tiers.json")
+file = Path("user_data/data/binance/leverage_tiers.json")
+if not file.parent.exists():
+    file.parent.mkdir(parents=True)
 json.dump(dict(sorted(lev_tiers.items())), file.open("w"), indent=2)
