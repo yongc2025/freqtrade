@@ -113,7 +113,7 @@ class AltcoinCompressionStrategy(IStrategy):
     _gmgn_cli: str = "gmgn-cli"
 
     # 多链支持：按优先级尝试（BSC 与 Binance 生态重叠最多）
-    _chains: list = ["bsc", "eth", "sol"]
+    _chains: list = ["eth", "bsc", "sol", "base", "arb", "avax", "polygon", "op", "sui", "ton", "tron"]
     _gmgn_available: bool = True
 
     # 数据快照记录（用于回测）

@@ -204,6 +204,14 @@ def main():
         "binance-smart-chain": "bsc",
         "ethereum": "eth",
         "solana": "sol",
+        "base": "base",
+        "arbitrum-one": "arb",
+        "avalanche": "avax",
+        "polygon-pos": "polygon",
+        "optimism": "op",
+        "sui": "sui",
+        "the-open-network": "ton",
+        "tron": "tron",
     }
 
     # 加载缓存
