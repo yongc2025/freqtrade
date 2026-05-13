@@ -948,10 +948,10 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         hold_seconds: int = 0,
     ) -> None:
         """
-        写入专用交易日志
+        写入专用交易日志（单行格式）
 
         文件：user_data/logs/trades_bf_YYYY-MM-DD.log
-        格式：纯中文，每笔交易一行，清晰易读
+        格式：时间 | 动作 | 方向 | 币种 | 价格 | 原因/评分 | 指标
         """
         try:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -962,92 +962,79 @@ class BinanceFuturesCompressionStrategy(IStrategy):
             pair_short = pair.replace("/USDT:USDT", "").replace("/USDT", "")
 
             if action == "entry":
-                mode_cn = "完整模式(95分制)" if signal_source == "full" else "降级模式(60分制)"
+                mode_cn = "完整" if signal_source == "full" else "降级"
 
-                # 拼接入场原因
+                # 入场原因（简短标签）
                 reasons = []
                 if bb_width_pctl < 0.08:
-                    reasons.append("BB极度压缩")
+                    reasons.append("BB极压")
                 elif bb_width_pctl < 0.15:
-                    reasons.append("BB高度压缩")
+                    reasons.append("BB高压")
                 elif bb_width_pctl < 0.20:
-                    reasons.append("BB中度压缩")
+                    reasons.append("BB中压")
 
                 if volume_ratio < 0.2:
-                    reasons.append("极度缩量")
+                    reasons.append("极缩量")
                 elif volume_ratio < 0.35:
-                    reasons.append("明显缩量")
-                elif volume_ratio < 0.5:
                     reasons.append("缩量")
+                elif volume_ratio < 0.5:
+                    reasons.append("轻缩量")
 
                 if 32 < rsi < 42:
-                    reasons.append("RSI低位")
+                    reasons.append("RSI低")
                 elif 42 <= rsi < 50:
-                    reasons.append("RSI中低位")
+                    reasons.append("RSI中低")
 
                 if funding_rate <= -0.0001:
-                    reasons.append("费率极负(空头拥挤)")
+                    reasons.append("费极负")
                 elif funding_rate <= -0.00005:
-                    reasons.append("费率偏负")
+                    reasons.append("费偏负")
 
                 if oi_change_pct > 3:
-                    reasons.append("OI大增(大资金入场)")
+                    reasons.append("OI大增")
                 elif oi_change_pct > 2:
-                    reasons.append("OI增加")
+                    reasons.append("OI增")
 
                 if top_ls_ratio > 1.5:
-                    reasons.append("大户明显做多")
+                    reasons.append("大户多")
                 elif top_ls_ratio > 1.2:
                     reasons.append("大户偏多")
 
                 if taker_ls_ratio < 0.8:
-                    reasons.append("Taker卖压过度")
+                    reasons.append("卖压重")
 
-                reason_str = "、".join(reasons) if reasons else "综合达标"
+                reason_str = "/".join(reasons) if reasons else "综合达标"
 
                 line = (
-                    f"{'='*70}\n"
-                    f"📌 入场 | {now_str}\n"
-                    f"   方向: {direction_cn} {pair_short}\n"
-                    f"   价格: {price:.4f} USDT\n"
-                    f"   评分: {score_total:.0f}分 ({mode_cn})\n"
-                    f"     ├─ 技术面: {score_tech:.0f}/60\n"
-                    f"     └─ 合约数据: {score_contract:.0f}/35\n"
-                    f"   入场原因: {reason_str}\n"
-                    f"   指标详情:\n"
-                    f"     ├─ BB分位: {bb_width_pctl:.3f}  量比: {volume_ratio:.2f}  RSI: {rsi:.1f}\n"
-                    f"     └─ 费率: {funding_rate:.6f}  OI变化: {oi_change_pct:+.1f}%  大户多空比: {top_ls_ratio:.2f}  Taker比: {taker_ls_ratio:.2f}\n"
+                    f"{now_str} | 入场 | {direction_cn} | {pair_short} | "
+                    f"{price:.4f} | {score_total:.0f}分({mode_cn} 技{score_tech:.0f}+合{score_contract:.0f}) | "
+                    f"{reason_str} | "
+                    f"BB={bb_width_pctl:.3f} 量={volume_ratio:.2f} RSI={rsi:.1f} "
+                    f"费={funding_rate:.6f} OI={oi_change_pct:+.1f}% 多空={top_ls_ratio:.2f} Taker={taker_ls_ratio:.2f}"
                 )
 
             elif action == "exit":
                 exit_reason_cn = self._EXIT_REASON_CN.get(exit_reason, exit_reason)
                 hold_str = self._format_hold_time(hold_seconds)
 
-                # 利润颜色标记
                 if profit_pct > 0:
-                    profit_str = f"✅ +{profit_pct:.2f}%"
+                    profit_str = f"✅+{profit_pct:.2f}%"
                 elif profit_pct < 0:
-                    profit_str = f"❌ {profit_pct:.2f}%"
+                    profit_str = f"❌{profit_pct:.2f}%"
                 else:
-                    profit_str = f"±0.00%"
+                    profit_str = "±0%"
 
                 line = (
-                    f"{'='*70}\n"
-                    f"📤 出场 | {now_str}\n"
-                    f"   方向: {direction_cn} {pair_short}\n"
-                    f"   价格: {price:.4f} USDT\n"
-                    f"   结果: {profit_str}\n"
-                    f"   持仓: {hold_str}\n"
-                    f"   离场原因: {exit_reason_cn}\n"
-                    f"   当前指标:\n"
-                    f"     ├─ RSI: {rsi:.1f}  BB分位: {bb_width_pctl:.3f}\n"
-                    f"     └─ 费率: {funding_rate:.6f}  大户多空比: {top_ls_ratio:.2f}\n"
+                    f"{now_str} | 出场 | {direction_cn} | {pair_short} | "
+                    f"{price:.4f} | {profit_str} | 持仓{hold_str} | "
+                    f"{exit_reason_cn} | "
+                    f"RSI={rsi:.1f} BB={bb_width_pctl:.3f} 费={funding_rate:.6f} 多空={top_ls_ratio:.2f}"
                 )
             else:
                 return
 
             with open(logpath, "a", encoding="utf-8") as f:
-                f.write(line)
+                f.write(line + "\n")
 
         except Exception as e:
             logger.debug(f"BinanceFuturesCompression: Failed to write trade log: {e}")
