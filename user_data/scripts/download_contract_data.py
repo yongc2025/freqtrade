@@ -22,10 +22,76 @@ import pandas as pd
 
 def create_exchange():
     """创建 Binance 期货交易所实例"""
-    return ccxt.binance({
+    exchange = ccxt.binance({
         "options": {"defaultType": "future"},
         "timeout": 30000,
     })
+    # 加载市场数据，确保隐式 API 方法可用
+    exchange.load_markets()
+    return exchange
+
+
+def _call_fapi(exchange, method_name: str, params: dict):
+    """
+    兼容不同 ccxt 版本调用 Binance fapi 隐式 API。
+    按优先级尝试多种方式：
+      1. 直接调用隐式方法
+      2. 常见命名变体
+      3. 通过 ccxt 的 fetch 方法
+      4. 直接 HTTP 请求（兜底）
+    """
+    import re
+    from urllib.parse import urlencode
+    from urllib.request import urlopen
+    import json as _json
+
+    # 1. 尝试直接调用
+    method = getattr(exchange, method_name, None)
+    if callable(method):
+        return method(params)
+
+    # 2. 尝试常见变体
+    suffix = method_name.replace("fapiPublicGet", "")
+    variants = [
+        # 原样
+        f"fapiPublicGet{suffix}",
+        # 全小写后缀
+        f"fapiPublicGet{suffix.lower()}",
+        # 每段首字母大写其余小写
+        f"fapiPublicGet{''.join(p[0].upper() + p[1:].lower() if p else '' for p in re.split(r'([A-Z][a-z]*)', suffix) if p)}",
+    ]
+    for variant in variants:
+        method = getattr(exchange, variant, None)
+        if callable(method):
+            return method(params)
+
+    # 3. 尝试 ccxt 的通用 fetch
+    path_map = {
+        "fapiPublicGetOpenInterestHist": "/fapi/v1/openInterestHist",
+        "fapiPublicGetTopLongShortPositionRatio": "/futures/data/top-long-short-position-ratio",
+        "fapiPublicGetTakerlongshortRatio": "/futures/data/takerlongshortRatio",
+        "fapiPublicGetFundingRate": "/fapi/v1/fundingRate",
+    }
+    path = path_map.get(method_name)
+    if path:
+        # 尝试 ccxt 内置 fetch（新版支持）
+        try:
+            url = exchange.urls["fapiPublic"] + path + "?" + urlencode(params)
+            return exchange.fetch(url)
+        except (KeyError, TypeError):
+            pass
+
+        # 4. 直接 HTTP 请求（兜底方案，不依赖 ccxt 隐式 API）
+        base_url = "https://fapi.binance.com"
+        query = urlencode(params)
+        full_url = f"{base_url}{path}?{query}"
+        try:
+            with urlopen(full_url, timeout=30) as resp:
+                return _json.loads(resp.read())
+        except Exception as e:
+            raise RuntimeError(f"直接请求 Binance API 失败: {e}")
+
+    raise AttributeError(f"无法找到方法 {method_name}，请升级 ccxt: pip install ccxt --upgrade")
 
 
 def download_funding_rate(exchange, symbol: str, days: int) -> pd.DataFrame:
@@ -36,7 +102,7 @@ def download_funding_rate(exchange, symbol: str, days: int) -> pd.DataFrame:
     all_data = []
     while True:
         try:
-            resp = exchange.fapiPublicGetFundingRate({
+            resp = _call_fapi(exchange, "fapiPublicGetFundingRate", {
                 "symbol": bsymbol,
                 "startTime": since,
                 "limit": 1000,
@@ -73,7 +139,7 @@ def download_oi_history(exchange, symbol: str, days: int) -> pd.DataFrame:
     all_data = []
     while True:
         try:
-            resp = exchange.fapiPublicGetOpenInterestHist({
+            resp = _call_fapi(exchange, "fapiPublicGetOpenInterestHist", {
                 "symbol": bsymbol,
                 "period": "5m",
                 "startTime": since,
@@ -112,7 +178,7 @@ def download_top_ls_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
     all_data = []
     while True:
         try:
-            resp = exchange.fapiPublicGetTopLongShortPositionRatio({
+            resp = _call_fapi(exchange, "fapiPublicGetTopLongShortPositionRatio", {
                 "symbol": bsymbol,
                 "period": "5m",
                 "startTime": since,
@@ -150,7 +216,7 @@ def download_taker_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
     all_data = []
     while True:
         try:
-            resp = exchange.fapiPublicGetTakerlongshortRatio({
+            resp = _call_fapi(exchange, "fapiPublicGetTakerlongshortRatio", {
                 "symbol": bsymbol,
                 "period": "5m",
                 "startTime": since,
