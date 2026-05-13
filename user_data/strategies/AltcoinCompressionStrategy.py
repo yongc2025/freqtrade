@@ -230,14 +230,14 @@ class AltcoinCompressionStrategy(IStrategy):
         symbol = metadata["pair"].split("/")[0]
         if src == "gmgn":
             logger.info(
-                f"[信号来源] {symbol}: 🟢 GMGN+技术面 | "
+                f"[信号来源] {symbol}: GMGN+技术面 | "
                 f"总分={score_total:.0f} 技术={score_t:.0f} GMGN={score_g:.0f} | "
                 f"SM={int(last.get('smart_money_count', 0))} KOL={int(last.get('kol_count', 0))} "
                 f"sniper={int(last.get('sniper_count', 0))}"
             )
         else:
             logger.info(
-                f"[信号来源] {symbol}: 🟡 纯技术面 | "
+                f"[信号来源] {symbol}: 纯技术面 | "
                 f"总分={score_total:.0f} 技术={score_t:.0f} | 无链上地址或GMGN数据为空"
             )
 
@@ -335,10 +335,10 @@ class AltcoinCompressionStrategy(IStrategy):
 
             self._write_signal_log(log_record)
 
-            emoji = "🟢" if src == "gmgn" else "🟡"
+            src_cn = "GMGN链上" if src == "gmgn" else "技术面"
             logger.info(
-                f"[入场信号] {emoji} {pair} @ {log_record['price']:.4f} | "
-                f"来源={src} 总分={score_val:.0f}/{max_score} "
+                f"[入场信号] {pair} @ {log_record['price']:.4f} | "
+                f"来源={src_cn} 总分={score_val:.0f}/{max_score} "
                 f"(技术={score_t:.0f} GMGN={score_g:.0f}) | "
                 f"BB_pctl={log_record['tech']['bb_width_pctl']:.3f} "
                 f"量比={log_record['tech']['volume_ratio']:.2f} "
@@ -472,10 +472,44 @@ class AltcoinCompressionStrategy(IStrategy):
 
             self._write_signal_log(log_record)
 
-            emoji = "🟢" if exit_source == "gmgn" else "🟡"
+            # 构建带量化数据的出场描述
+            price = log_record['price']
+            if exit_reason == "smart_money_exit":
+                sm = int(row.get("smart_money_count", 0))
+                rug = round(self._safe_float(row.get("rug_ratio", 0)), 3)
+                detail = f"聪明钱归零(SM={sm})且Rug比率偏高({rug:.3f}>0.2)，疑似跑路"
+            elif exit_reason == "smart_money_decline":
+                sm_now = round(self._safe_float(sm_ma3.loc[idx_pos]), 1)
+                sm_prev = round(self._safe_float(sm_ma3_prev.loc[idx_pos]), 1)
+                ratio = round(self._safe_float(sm_decline_ratio.loc[idx_pos]) * 100, 1)
+                detail = f"聪明钱3周期均值从{sm_prev}降至{sm_now}，下降{ratio}%"
+            elif exit_reason == "sniper_spike":
+                sn_now = round(self._safe_float(sniper_ma3.loc[idx_pos]), 1)
+                sn_prev = round(self._safe_float(sniper_ma3_prev.loc[idx_pos]), 1)
+                detail = f"狙击手3周期均值从{sn_prev}飙升至{sn_now}(>50且翻倍)，机器人涌入"
+            elif exit_reason == "security_deteriorated":
+                rug = round(self._safe_float(row.get("rug_ratio", 0)), 3)
+                bund = round(self._safe_float(row.get("bundler_rate", 0)), 3)
+                rat = round(self._safe_float(row.get("rat_trader_rate", 0)), 3)
+                detail = f"Rug={rug:.3f}(>0.25) Bundler={bund:.3f}(>0.18) Rat={rat:.3f}(>0.12)"
+            elif exit_reason == "honeypot_detected":
+                detail = "代币已转为貔貅，立即离场"
+            elif exit_reason == "fresh_wallet_spike":
+                fw = round(self._safe_float(row.get("fresh_wallet_rate", 0)) * 100, 1)
+                detail = f"新钱包占比{fw:.1f}%(>40%)，疑似庄家对敲"
+            elif exit_reason == "rsi_overbought":
+                rsi_val = round(self._safe_float(row.get("rsi", 0)), 1)
+                detail = f"RSI={rsi_val:.1f}(>{self.rsi_overbought.value})，超买区域"
+            elif exit_reason == "volume_divergence":
+                vr = round(self._safe_float(row.get("volume_ratio", 0)), 2)
+                detail = f"量比={vr:.2f}(>{self.volume_spike_multiplier.value})且收阴线，放量下跌"
+            else:
+                detail = exit_reason
+
+            exit_source_cn = "GMGN链上" if exit_source == "gmgn" else "技术面"
             logger.info(
-                f"[出场信号] {emoji} {pair} @ {log_record['price']:.4f} | "
-                f"原因={exit_reason} 来源={exit_source}"
+                f"[出场信号] {pair} @ {price:.4f} | "
+                f"{detail} | 来源={exit_source_cn}"
             )
 
         return dataframe
@@ -532,9 +566,28 @@ class AltcoinCompressionStrategy(IStrategy):
                 "exit_source": "tech",
                 "exit_reason": exit_reason,
             })
+
+            profit_pct = current_profit * 100
+            if exit_reason == "time_stop_7d":
+                hold_days = (current_time - trade.open_date_utc).days
+                detail = f"持仓{hold_days}天(>7天)且利润仅{profit_pct:.1f}%(<5%)，时间止损"
+            elif exit_reason == "profit_protect_tier3":
+                peak_pct = (trade.max_rate - trade.open_rate) / trade.open_rate * 100
+                dd = (trade.max_rate - current_rate) / trade.max_rate * 100
+                detail = f"峰值利润{peak_pct:.1f}%(>{self.profit_tier3.value*100:.0f}%)，回撤{dd:.1f}%(>{self.profit_drawdown_pct.value*80:.0f}%)，三级保护"
+            elif exit_reason == "profit_protect_tier2":
+                peak_pct = (trade.max_rate - trade.open_rate) / trade.open_rate * 100
+                dd = (trade.max_rate - current_rate) / trade.max_rate * 100
+                detail = f"峰值利润{peak_pct:.1f}%(>{self.profit_tier2.value*100:.0f}%)，回撤{dd:.1f}%(>{self.profit_drawdown_pct.value*100:.0f}%)，二级保护"
+            elif exit_reason == "profit_protect_tier1":
+                peak_pct = (trade.max_rate - trade.open_rate) / trade.open_rate * 100
+                dd = (trade.max_rate - current_rate) / trade.max_rate * 100
+                detail = f"峰值利润{peak_pct:.1f}%(>{self.profit_tier1.value*100:.0f}%)，回撤{dd:.1f}%(>{self.profit_drawdown_pct.value*150:.0f}%)，一级保护"
+            else:
+                detail = f"原因={exit_reason} 利润={profit_pct:.1f}%"
+
             logger.info(
-                f"[出场信号] 🟡 {pair} @ {current_rate:.4f} | "
-                f"原因={exit_reason} 利润={current_profit*100:.1f}%"
+                f"[出场信号] {pair} @ {current_rate:.4f} | {detail}"
             )
             return exit_reason
 
