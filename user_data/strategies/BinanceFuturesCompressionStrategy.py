@@ -585,7 +585,7 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         """
         入场条件（4层过滤）
 
-        第1层：基础过滤
+        第1层：基础过滤（VolumePairList 已保证流动性，只检查数据有效性）
         第2层：技术面压缩
         第3层：合约数据确认（完整模式时检查，降级模式跳过）
         第4层：评分门槛
@@ -613,9 +613,8 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         atr_ok = dataframe["atr_pctl"] < 0.95
 
         entry_condition = (
-            # 第1层：基础过滤
+            # 第1层：基础过滤（VolumePairList 已保证流动性）
             (dataframe["volume"] > 0)
-            & (dataframe["volume"] > 50000)  # 最低流动性
             # 第2层：技术面压缩
             & (dataframe["bb_width_pctl"] < self.bb_width_pctl_threshold.value)
             & (dataframe["volume_ratio"] < self.volume_ratio_threshold.value)
@@ -646,7 +645,6 @@ class BinanceFuturesCompressionStrategy(IStrategy):
 
         short_condition = (
             (dataframe["volume"] > 0)
-            & (dataframe["volume"] > 50000)
             & (dataframe["bb_width_pctl"] < self.bb_width_pctl_threshold.value)
             & (dataframe["volume_ratio"] < self.volume_ratio_threshold.value)
             & rsi_short_ok
