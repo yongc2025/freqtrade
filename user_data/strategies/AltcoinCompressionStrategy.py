@@ -543,14 +543,93 @@ class AltcoinCompressionStrategy(IStrategy):
         return None
 
     def _write_signal_log(self, record: dict) -> None:
-        """写入信号日志到 user_data/logs/signals_YYYY-MM-DD.jsonl"""
+        """写入信号日志到 JSONL + 中文可读 .log"""
         try:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            # 1. JSONL（英文原始数据，程序解析用）
             filepath = SIGNAL_LOG_DIR / f"signals_{today}.jsonl"
             with open(filepath, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+
+            # 2. 中文可读日志（人工查看用）
+            logpath = SIGNAL_LOG_DIR / f"signals_{today}.log"
+            readable = self._format_signal_readable(record)
+            with open(logpath, "a", encoding="utf-8") as f:
+                f.write(readable + "\n")
         except Exception as e:
             logger.debug(f"AltcoinCompression: Failed to write signal log: {e}")
+
+    def _format_signal_readable(self, record: dict) -> str:
+        """将信号记录格式化为中文可读文本"""
+        action = record.get("action", "")
+        pair = record.get("pair", "")
+        price = record.get("price", 0)
+        time_str = record.get("time", "")
+
+        # 来源翻译
+        source_cn = {
+            "tech": "技术面",
+            "gmgn": "GMGN链上",
+        }.get(record.get("signal_source", ""), record.get("signal_source", ""))
+
+        if action == "entry":
+            score = record.get("score", {})
+            tech = record.get("tech", {})
+            parts = [
+                f"[入场] {pair} @ {price:.4f}",
+                f"来源={source_cn}",
+                f"总分={score.get('total', 0):.0f}/{score.get('max', 0)}",
+                f"BB_pctl={tech.get('bb_width_pctl', 0):.3f}",
+                f"量比={tech.get('volume_ratio', 0):.2f}",
+                f"RSI={tech.get('rsi', 0):.1f}",
+            ]
+            # GMGN 附加数据
+            gmgn = record.get("gmgn")
+            if gmgn:
+                parts.append(
+                    f"SM={gmgn.get('smart_money_count', 0)} "
+                    f"KOL={gmgn.get('kol_count', 0)} "
+                    f"sniper={gmgn.get('sniper_count', 0)} "
+                    f"rug={gmgn.get('rug_ratio', 0):.3f}"
+                )
+            return " | ".join(parts)
+
+        elif action == "exit":
+            exit_reason = record.get("exit_reason", "")
+            exit_source = record.get("exit_source", "")
+            exit_source_cn = {"tech": "技术面", "gmgn": "GMGN链上"}.get(exit_source, exit_source)
+
+            # 出场原因翻译
+            reason_cn = {
+                "rsi_overbought": "RSI超买",
+                "volume_divergence": "量价背离",
+                "fresh_wallet_spike": "新钱包激增",
+                "honeypot_detected": "貔貅检测",
+                "security_deteriorated": "安全指标恶化",
+                "sniper_spike": "狙击手激增",
+                "smart_money_decline": "聪明钱下降",
+                "smart_money_exit": "聪明钱出场",
+                "time_stop_7d": "7天时间止损",
+                "profit_protect_tier1": "一级利润保护",
+                "profit_protect_tier2": "二级利润保护",
+                "profit_protect_tier3": "三级利润保护",
+            }.get(exit_reason, exit_reason)
+
+            parts = [
+                f"[出场] {pair} @ {price:.4f}",
+                f"原因={reason_cn}",
+                f"来源={exit_source_cn}",
+            ]
+
+            # 利润数据（custom_exit 写入的）
+            profit_pct = record.get("profit_pct")
+            if profit_pct is not None:
+                parts.append(f"利润={profit_pct:.1f}%")
+
+            return " | ".join(parts)
+
+        return str(record)
 
     def _calculate_score(self, dataframe: DataFrame) -> DataFrame:
         """
