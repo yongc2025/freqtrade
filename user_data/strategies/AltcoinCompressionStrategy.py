@@ -744,7 +744,7 @@ class AltcoinCompressionStrategy(IStrategy):
 
         # 狙击手数量少 (8分) - 越少越好
         sniper_score = pd.Series(0, index=idx, dtype=float)
-        sniper_score[dataframe["sniper_count"] < 15] = 8
+        sniper_score[(dataframe["sniper_count"] > 0) & (dataframe["sniper_count"] < 15)] = 8
         sniper_score[(dataframe["sniper_count"] >= 15) & (dataframe["sniper_count"] < 30)] = 6
         sniper_score[(dataframe["sniper_count"] >= 30) & (dataframe["sniper_count"] < 50)] = 4
         sniper_score[(dataframe["sniper_count"] >= 50) & (dataframe["sniper_count"] < 100)] = 2
