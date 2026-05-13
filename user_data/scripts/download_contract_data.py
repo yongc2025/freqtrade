@@ -287,17 +287,19 @@ def download_funding_rate(exchange, symbol: str, days: int) -> pd.DataFrame:
 def download_oi_history(exchange, symbol: str, days: int) -> pd.DataFrame:
     """下载持仓量历史（5min 粒度）"""
     bsymbol = symbol.replace("/", "").replace(":USDT", "")
-    since = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
+    # fapiData 接口仅保留最近30天数据，不传 startTime，从最新数据向前翻页
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
     all_data = []
+    end_time = None  # None = 最新数据
+
     while True:
+        params = {"symbol": bsymbol, "period": "5m", "limit": 500}
+        if end_time:
+            params["endTime"] = end_time
+
         try:
-            resp = _call_fapi_with_fallback(exchange, "fapiPublicGetOpenInterestHist", {
-                "symbol": bsymbol,
-                "period": "5m",
-                "startTime": since,
-                "limit": 500,
-            })
+            resp = _call_fapi(exchange, "fapiPublicGetOpenInterestHist", params)
         except Exception as e:
             print(f"  ⚠ OI 下载失败 {symbol}: {e}")
             break
@@ -306,11 +308,17 @@ def download_oi_history(exchange, symbol: str, days: int) -> pd.DataFrame:
             break
 
         all_data.extend(resp)
-        last_time = int(resp[-1]["timestamp"])
+
+        # 检查最早一条是否已超过截止时间
+        earliest = int(resp[0]["timestamp"])
+        if datetime.fromtimestamp(earliest / 1000, tz=timezone.utc) < cutoff:
+            break
+
         if len(resp) < 500:
             break
-        since = last_time + 1
-        pass  # 限流器统一控制间隔
+
+        # 用最早时间戳 - 1ms 作为下一页的 endTime
+        end_time = earliest - 1
 
     if not all_data:
         return pd.DataFrame()
@@ -320,23 +328,26 @@ def download_oi_history(exchange, symbol: str, days: int) -> pd.DataFrame:
     df["oi"] = df["sumOpenInterest"].astype(float)
     df["oi_value"] = df["sumOpenInterestValue"].astype(float)
     df = df[["timestamp", "oi", "oi_value"]].sort_values("timestamp").reset_index(drop=True)
+    # 过滤掉超出时间范围的数据
+    df = df[df["timestamp"] >= cutoff].reset_index(drop=True)
     return df
 
 
 def download_top_ls_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
     """下载大户多空比（持仓量）"""
     bsymbol = symbol.replace("/", "").replace(":USDT", "")
-    since = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
     all_data = []
+    end_time = None
+
     while True:
+        params = {"symbol": bsymbol, "period": "5m", "limit": 500}
+        if end_time:
+            params["endTime"] = end_time
+
         try:
-            resp = _call_fapi_with_fallback(exchange, "fapiPublicGetTopLongShortPositionRatio", {
-                "symbol": bsymbol,
-                "period": "5m",
-                "startTime": since,
-                "limit": 500,
-            })
+            resp = _call_fapi(exchange, "fapiPublicGetTopLongShortPositionRatio", params)
         except Exception as e:
             print(f"  ⚠ 多空比下载失败 {symbol}: {e}")
             break
@@ -345,11 +356,15 @@ def download_top_ls_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
             break
 
         all_data.extend(resp)
-        last_time = int(resp[-1]["timestamp"])
+
+        earliest = int(resp[0]["timestamp"])
+        if datetime.fromtimestamp(earliest / 1000, tz=timezone.utc) < cutoff:
+            break
+
         if len(resp) < 500:
             break
-        since = last_time + 1
-        pass  # 限流器统一控制间隔
+
+        end_time = earliest - 1
 
     if not all_data:
         return pd.DataFrame()
@@ -358,23 +373,25 @@ def download_top_ls_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
     df["top_ls_ratio"] = df["longShortRatio"].astype(float)
     df = df[["timestamp", "top_ls_ratio"]].sort_values("timestamp").reset_index(drop=True)
+    df = df[df["timestamp"] >= cutoff].reset_index(drop=True)
     return df
 
 
 def download_taker_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
     """下载 Taker 买卖比"""
     bsymbol = symbol.replace("/", "").replace(":USDT", "")
-    since = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
     all_data = []
+    end_time = None
+
     while True:
+        params = {"symbol": bsymbol, "period": "5m", "limit": 500}
+        if end_time:
+            params["endTime"] = end_time
+
         try:
-            resp = _call_fapi_with_fallback(exchange, "fapiPublicGetTakerlongshortRatio", {
-                "symbol": bsymbol,
-                "period": "5m",
-                "startTime": since,
-                "limit": 500,
-            })
+            resp = _call_fapi(exchange, "fapiPublicGetTakerlongshortRatio", params)
         except Exception as e:
             print(f"  ⚠ Taker 比下载失败 {symbol}: {e}")
             break
@@ -383,11 +400,15 @@ def download_taker_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
             break
 
         all_data.extend(resp)
-        last_time = int(resp[-1]["timestamp"])
+
+        earliest = int(resp[0]["timestamp"])
+        if datetime.fromtimestamp(earliest / 1000, tz=timezone.utc) < cutoff:
+            break
+
         if len(resp) < 500:
             break
-        since = last_time + 1
-        pass  # 限流器统一控制间隔
+
+        end_time = earliest - 1
 
     if not all_data:
         return pd.DataFrame()
@@ -396,6 +417,8 @@ def download_taker_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
     df["taker_ls_ratio"] = df["buySellRatio"].astype(float)
     df = df[["timestamp", "taker_ls_ratio"]].sort_values("timestamp").reset_index(drop=True)
+    df = df[df["timestamp"] >= cutoff].reset_index(drop=True)
+    return df
     return df
 
 
