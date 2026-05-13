@@ -953,6 +953,14 @@ class AltcoinCompressionStrategy(IStrategy):
         """调用 gmgn-cli 并返回解析后的 JSON"""
         cmd = [self._gmgn_cli] + list(args)
         try:
+            # 从 config 读取代理并注入子进程环境变量
+            env = os.environ.copy()
+            proxy = self.config.get("aiohttp_proxy") if hasattr(self, "config") and self.config else None
+            if proxy:
+                env.setdefault("HTTPS_PROXY", proxy)
+                env.setdefault("HTTP_PROXY", proxy)
+                env.setdefault("https_proxy", proxy)
+                env.setdefault("http_proxy", proxy)
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -960,6 +968,7 @@ class AltcoinCompressionStrategy(IStrategy):
                 encoding="utf-8",
                 errors="replace",
                 timeout=10,
+                env=env,
             )
             if result.returncode != 0:
                 return None
