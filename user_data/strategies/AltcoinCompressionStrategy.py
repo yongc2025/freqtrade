@@ -113,6 +113,9 @@ class AltcoinCompressionStrategy(IStrategy):
     _gmgn_cache: dict[str, tuple[dict, float]] = {}
     _gmgn_cache_ttl: int = 300  # 5分钟
 
+    # 信号日志去重集合（防止历史数据重复写入）
+    _logged_signals: set = set()
+
     # GMGN CLI 路径
     _gmgn_cli: str = "gmgn-cli"
 
@@ -221,25 +224,17 @@ class AltcoinCompressionStrategy(IStrategy):
         # ========== 评分模型 ==========
         dataframe["score"] = self._calculate_score(dataframe)
 
-        # ========== 信号来源日志 ==========
+        # ========== 信号来源记录（仅写文件，不打控制台） ==========
         last = dataframe.iloc[-1]
         src = last.get("signal_source", "tech")
         score_t = self._safe_float(last.get("score_tech", 0))
         score_g = self._safe_float(last.get("score_gmgn", 0))
         score_total = self._safe_float(last.get("score", 0))
         symbol = metadata["pair"].split("/")[0]
-        if src == "gmgn":
-            logger.info(
-                f"[信号来源] {symbol}: GMGN+技术面 | "
-                f"总分={score_total:.0f} 技术={score_t:.0f} GMGN={score_g:.0f} | "
-                f"SM={int(last.get('smart_money_count', 0))} KOL={int(last.get('kol_count', 0))} "
-                f"sniper={int(last.get('sniper_count', 0))}"
-            )
-        else:
-            logger.info(
-                f"[信号来源] {symbol}: 纯技术面 | "
-                f"总分={score_total:.0f} 技术={score_t:.0f} | 无链上地址或GMGN数据为空"
-            )
+        logger.debug(
+            f"[信号来源] {symbol}: {'GMGN+技术面' if src == 'gmgn' else '纯技术面'} | "
+            f"总分={score_total:.0f} 技术={score_t:.0f} GMGN={score_g:.0f}"
+        )
 
         # ========== 数据快照记录 ==========
         if self._snapshot_enabled:
@@ -293,10 +288,11 @@ class AltcoinCompressionStrategy(IStrategy):
 
         dataframe.loc[entry_condition, "enter_long"] = 1
 
-        # === 写入场信号日志（仅记录最新 candle） ===
+        # === 写入场信号日志（仅记录最新 candle，去重） ===
         pair = metadata["pair"]
         last_idx = dataframe.index[-1]
-        if entry_condition.iloc[-1]:
+        signal_key = f"{pair}_{last_idx}_entry"
+        if entry_condition.iloc[-1] and signal_key not in self._logged_signals:
             row = dataframe.loc[last_idx]
             src = row.get("signal_source", "tech")
             score_val = self._safe_float(row.get("score", 0))
@@ -334,16 +330,7 @@ class AltcoinCompressionStrategy(IStrategy):
                 }
 
             self._write_signal_log(log_record)
-
-            src_cn = "GMGN链上" if src == "gmgn" else "技术面"
-            logger.info(
-                f"[入场信号] {pair} @ {log_record['price']:.4f} | "
-                f"来源={src_cn} 总分={score_val:.0f}/{max_score} "
-                f"(技术={score_t:.0f} GMGN={score_g:.0f}) | "
-                f"BB_pctl={log_record['tech']['bb_width_pctl']:.3f} "
-                f"量比={log_record['tech']['volume_ratio']:.2f} "
-                f"RSI={log_record['tech']['rsi']:.1f}"
-            )
+            self._logged_signals.add(signal_key)
 
         return dataframe
 
@@ -438,9 +425,10 @@ class AltcoinCompressionStrategy(IStrategy):
         dataframe.loc[signal_smart_money_decline, "exit_tag"] = "smart_money_decline"
         dataframe.loc[signal_smart_money_exit, "exit_tag"] = "smart_money_exit"
 
-        # === 写出场信号日志（仅记录最新 candle） ===
+        # === 写出场信号日志（仅记录最新 candle，去重） ===
         last_idx = dataframe.index[-1]
-        if dataframe.at[last_idx, "exit_long"] == 1:
+        signal_key = f"{pair}_{last_idx}_exit"
+        if dataframe.at[last_idx, "exit_long"] == 1 and signal_key not in self._logged_signals:
             row = dataframe.loc[last_idx]
             src = row.get("signal_source", "tech")
             exit_reason = row.get("exit_tag", "unknown")
@@ -471,46 +459,7 @@ class AltcoinCompressionStrategy(IStrategy):
                 }
 
             self._write_signal_log(log_record)
-
-            # 构建带量化数据的出场描述
-            price = log_record['price']
-            if exit_reason == "smart_money_exit":
-                sm = int(row.get("smart_money_count", 0))
-                rug = round(self._safe_float(row.get("rug_ratio", 0)), 3)
-                detail = f"聪明钱归零(SM={sm})且Rug比率偏高({rug:.3f}>0.2)，疑似跑路"
-            elif exit_reason == "smart_money_decline":
-                sm_now = round(self._safe_float(sm_ma3.loc[last_idx]), 1)
-                sm_prev = round(self._safe_float(sm_ma3_prev.loc[last_idx]), 1)
-                ratio = round(self._safe_float(sm_decline_ratio.loc[last_idx]) * 100, 1)
-                detail = f"聪明钱3周期均值从{sm_prev}降至{sm_now}，下降{ratio}%"
-            elif exit_reason == "sniper_spike":
-                sn_now = round(self._safe_float(sniper_ma3.loc[last_idx]), 1)
-                sn_prev = round(self._safe_float(sniper_ma3_prev.loc[last_idx]), 1)
-                detail = f"狙击手3周期均值从{sn_prev}飙升至{sn_now}(>50且翻倍)，机器人涌入"
-            elif exit_reason == "security_deteriorated":
-                rug = round(self._safe_float(row.get("rug_ratio", 0)), 3)
-                bund = round(self._safe_float(row.get("bundler_rate", 0)), 3)
-                rat = round(self._safe_float(row.get("rat_trader_rate", 0)), 3)
-                detail = f"Rug={rug:.3f}(>0.25) Bundler={bund:.3f}(>0.18) Rat={rat:.3f}(>0.12)"
-            elif exit_reason == "honeypot_detected":
-                detail = "代币已转为貔貅，立即离场"
-            elif exit_reason == "fresh_wallet_spike":
-                fw = round(self._safe_float(row.get("fresh_wallet_rate", 0)) * 100, 1)
-                detail = f"新钱包占比{fw:.1f}%(>40%)，疑似庄家对敲"
-            elif exit_reason == "rsi_overbought":
-                rsi_val = round(self._safe_float(row.get("rsi", 0)), 1)
-                detail = f"RSI={rsi_val:.1f}(>{self.rsi_overbought.value})，超买区域"
-            elif exit_reason == "volume_divergence":
-                vr = round(self._safe_float(row.get("volume_ratio", 0)), 2)
-                detail = f"量比={vr:.2f}(>{self.volume_spike_multiplier.value})且收阴线，放量下跌"
-            else:
-                detail = exit_reason
-
-            exit_source_cn = "GMGN链上" if exit_source == "gmgn" else "技术面"
-            logger.info(
-                f"[出场信号] {pair} @ {price:.4f} | "
-                f"{detail} | 来源={exit_source_cn}"
-            )
+            self._logged_signals.add(signal_key)
 
         return dataframe
 
@@ -801,7 +750,7 @@ class AltcoinCompressionStrategy(IStrategy):
         # 缓存（内存级）
         self._gmgn_cache[pair] = (data, time.time())
 
-        logger.info(
+        logger.debug(
             f"AltcoinCompression: GMGN data for {symbol}: "
             f"smart_money={data['smart_money_count']}, "
             f"rug={data['rug_ratio']:.2f}, "
