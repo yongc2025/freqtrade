@@ -429,9 +429,19 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         dataframe["macd_hist"] = macd["macdhist"]
 
         # ========== Binance 合约数据 ==========
+        # 优先从 freqtrade 内置数据读取（回测/实盘都支持）
         contract_df = self._load_contract_csv(metadata["pair"])
-        if contract_df is not None and not contract_df.empty:
-            # 回测模式：从 CSV 加载历史数据，按时间戳合并
+        fr_df = self._get_funding_rate_data(metadata["pair"])
+
+        if fr_df is not None and not fr_df.empty:
+            # 有 freqtrade 内置 funding_rate 数据
+            dataframe = self._merge_funding_rate(dataframe, fr_df)
+            # 再合并 CSV 补充数据（OI、多空比）
+            if contract_df is not None and not contract_df.empty:
+                dataframe = self._merge_contract_to_ohlcv(dataframe, contract_df)
+            dataframe["data_mode"] = "full"
+        elif contract_df is not None and not contract_df.empty:
+            # 没有 freqtrade 数据，用 CSV
             dataframe = self._merge_contract_to_ohlcv(dataframe, contract_df)
             dataframe["data_mode"] = "full"
         else:
@@ -468,6 +478,48 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         except Exception as e:
             logger.warning(f"BinanceFuturesCompression: Failed to get contract data for {pair}: {e}")
             return default
+
+    def _get_funding_rate_data(self, pair: str) -> pd.DataFrame | None:
+        """
+        从 freqtrade 内置数据获取 funding_rate 历史
+
+        freqtrade 下载 futures 数据时会自动下载 funding_rate feather 文件，
+        存放在 user_data/data/binance/futures/ 目录。
+        """
+        if not self.dp:
+            return None
+
+        try:
+            fr_df = self.dp.get_pair_dataframe(pair, self.timeframe, candle_type="funding_rate")
+            if fr_df is not None and len(fr_df) > 0:
+                return fr_df
+        except Exception as e:
+            logger.debug(f"BinanceFuturesCompression: Failed to get funding_rate data for {pair}: {e}")
+
+        return None
+
+    def _merge_funding_rate(self, dataframe: DataFrame, fr_df: pd.DataFrame) -> DataFrame:
+        """
+        将 freqtrade 内置的 funding_rate 数据合并到 OHLCV dataframe
+
+        funding_rate 的 'close' 列就是资金费率值。
+        """
+        dataframe = dataframe.copy()
+
+        # fr_df 的 close 列就是 funding_rate 值
+        if "close" in fr_df.columns:
+            fr_series = fr_df[["close"]].rename(columns={"close": "funding_rate"})
+            fr_series = fr_series[~fr_series.index.duplicated(keep="last")]
+
+            # 按 date 对齐
+            if "date" in fr_series.columns:
+                fr_series = fr_series.set_index("date")
+
+            # merge
+            dataframe = dataframe.join(fr_series, how="left")
+            dataframe["funding_rate"] = dataframe["funding_rate"].ffill().fillna(0.0)
+
+        return dataframe
 
     def _load_contract_csv(self, pair: str) -> pd.DataFrame | None:
         """
