@@ -15,9 +15,75 @@ import sys
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import urlopen, Request
+from urllib.error import HTTPError
+import json as _json
 
 import ccxt
 import pandas as pd
+
+
+# ── 限流器 ──────────────────────────────────────────────────
+class RateLimiter:
+    """
+    Binance fapi 限流控制器
+    - 全局最小请求间隔
+    - 429 指数退避重试
+    - 解析 X-MBX-USED-WEIGHT 响应头动态调速
+    """
+
+    def __init__(self, min_interval: float = 0.2, max_weight_ratio: float = 0.7):
+        self.min_interval = min_interval          # 最小请求间隔(秒)
+        self.max_weight_ratio = max_weight_ratio   # 已用权重占比阈值(超过则暂停)
+        self.last_request_time = 0.0
+        self.used_weight = 0
+        self.weight_limit = 2400                   # Binance 默认每分钟上限
+
+    def wait(self):
+        """请求前等待，确保最小间隔"""
+        elapsed = time.time() - self.last_request_time
+        if elapsed < self.min_interval:
+            time.sleep(self.min_interval - elapsed)
+
+    def update_from_response(self, headers):
+        """从响应头更新权重使用情况"""
+        if headers is None:
+            return
+        # 支持 dict 和 http.client.HTTPMessage
+        used = None
+        limit = None
+        for key in ("X-MBX-USED-WEIGHT-1M", "x-mbx-used-weight-1m", "X-MBX-USED-WEIGHT", "x-mbx-used-weight"):
+            val = headers.get(key) if hasattr(headers, 'get') else None
+            if val is not None:
+                try:
+                    used = int(val)
+                    break
+                except ValueError:
+                    pass
+        for key in ("X-MBX-ORDER-COUNT-1M", "x-mbx-order-count-1m"):
+            pass  # 仅关注 weight
+
+        if used is not None:
+            self.used_weight = used
+
+        # 如果已用权重超过阈值，主动暂停
+        if self.used_weight > self.weight_limit * self.max_weight_ratio:
+            wait_time = max(5.0, 60.0 - (time.time() - self.last_request_time))
+            print(f"  ⏳ 已用权重 {self.used_weight}/{self.weight_limit}，暂停 {wait_time:.0f}s...")
+            time.sleep(wait_time)
+
+    def on_success(self):
+        self.last_request_time = time.time()
+
+    def on_429(self, retry_count: int) -> float:
+        """429 限流回调，返回建议等待时间（指数退避）"""
+        wait = min(60.0, (2 ** retry_count) * 2.0)  # 2s, 4s, 8s, 16s, 32s, 60s
+        print(f"  ⚠ 触发限频(429)，等待 {wait:.0f}s 后重试...")
+        return wait
+
+
+_rate_limiter = RateLimiter(min_interval=0.25)
 
 
 def create_exchange():
@@ -31,7 +97,7 @@ def create_exchange():
     return exchange
 
 
-def _call_fapi(exchange, method_name: str, params: dict):
+def _call_fapi(exchange, method_name: str, params: dict, max_retries: int = 3):
     """
     兼容不同 ccxt 版本调用 Binance fapi 隐式 API。
 
@@ -42,11 +108,12 @@ def _call_fapi(exchange, method_name: str, params: dict):
       - Taker比:  fapiDataGetTakerlongshortRatio   (fapiData)
 
     自动尝试 fapiPublic -> fapiData -> 直接HTTP 兜底。
+    内置限流、429重试、权重监控。
     """
     # 1. 直接调用
     method = getattr(exchange, method_name, None)
     if callable(method):
-        return method(params)
+        return _call_with_retry(method, params, max_retries)
 
     # 2. fapiPublic <-> fapiData 互换尝试
     alt_names = []
@@ -60,38 +127,81 @@ def _call_fapi(exchange, method_name: str, params: dict):
     for alt_name in alt_names:
         method = getattr(exchange, alt_name, None)
         if callable(method):
-            return method(params)
+            return _call_with_retry(method, params, max_retries)
 
     # 3. 直接 HTTP 请求（兜底，不依赖 ccxt 隐式 API）
-    from urllib.parse import urlencode
-    from urllib.request import urlopen
-    import json as _json
-
     path_map = {
-        # 资金费率
         "fapiPublicGetFundingRate": "/fapi/v1/fundingRate",
-        # 持仓量
         "fapiDataGetOpenInterestHist": "/futures/data/openInterestHist",
         "fapiPublicGetOpenInterestHist": "/futures/data/openInterestHist",
-        # 大户多空比
         "fapiDataGetTopLongShortPositionRatio": "/futures/data/top-long-short-position-ratio",
         "fapiPublicGetTopLongShortPositionRatio": "/futures/data/top-long-short-position-ratio",
-        # Taker 买卖比
         "fapiDataGetTakerlongshortRatio": "/futures/data/takerlongshortRatio",
         "fapiPublicGetTakerlongshortRatio": "/futures/data/takerlongshortRatio",
     }
     path = path_map.get(method_name)
     if path:
-        base_url = "https://fapi.binance.com"
-        query = urlencode(params)
-        full_url = f"{base_url}{path}?{query}"
-        try:
-            with urlopen(full_url, timeout=30) as resp:
-                return _json.loads(resp.read())
-        except Exception as e:
-            raise RuntimeError(f"直接请求 Binance API 失败: {e}")
+        return _http_get_with_retry(f"https://fapi.binance.com{path}", params, max_retries)
 
     raise AttributeError(f"无法找到方法 {method_name}，请升级 ccxt: pip install ccxt --upgrade")
+
+
+def _call_with_retry(method, params: dict, max_retries: int):
+    """带限流和重试的 ccxt 隐式 API 调用"""
+    for attempt in range(max_retries + 1):
+        _rate_limiter.wait()
+        try:
+            result = method(params)
+            _rate_limiter.on_success()
+            return result
+        except ccxt.RateLimitExceeded as e:
+            wait = _rate_limiter.on_429(attempt)
+            time.sleep(wait)
+        except ccxt.NetworkError as e:
+            if attempt < max_retries:
+                time.sleep(2.0)
+            else:
+                raise
+    raise RuntimeError(f"超过最大重试次数 ({max_retries})")
+
+
+def _http_get_with_retry(base_url: str, params: dict, max_retries: int):
+    """带限流和重试的直接 HTTP 请求"""
+    query = urlencode(params)
+    full_url = f"{base_url}?{query}"
+
+    for attempt in range(max_retries + 1):
+        _rate_limiter.wait()
+        try:
+            req = Request(full_url)
+            req.add_header("User-Agent", "freqtrade-contract-downloader/1.0")
+            with urlopen(req, timeout=30) as resp:
+                _rate_limiter.on_success()
+                # 读取响应头更新权重
+                _rate_limiter.update_from_response(resp.headers)
+                return _json.loads(resp.read())
+        except HTTPError as e:
+            if e.code == 429:
+                # 解析 Retry-After 头
+                retry_after = e.headers.get("Retry-After")
+                if retry_after:
+                    wait = float(retry_after)
+                else:
+                    wait = _rate_limiter.on_429(attempt)
+                time.sleep(wait)
+            elif e.code == 418:
+                # IP 被封，等待更久
+                print(f"  ❌ IP 被 Binance 封禁(418)，等待 120s...")
+                time.sleep(120)
+            else:
+                raise RuntimeError(f"Binance API 错误 {e.code}: {e.reason}")
+        except Exception as e:
+            if attempt < max_retries:
+                time.sleep(2.0)
+            else:
+                raise RuntimeError(f"直接请求 Binance API 失败: {e}")
+
+    raise RuntimeError(f"超过最大重试次数 ({max_retries})")
 
 
 def download_funding_rate(exchange, symbol: str, days: int) -> pd.DataFrame:
@@ -119,7 +229,7 @@ def download_funding_rate(exchange, symbol: str, days: int) -> pd.DataFrame:
         if len(resp) < 1000:
             break
         since = last_time + 1
-        time.sleep(0.1)
+        pass  # 限流器统一控制间隔
 
     if not all_data:
         return pd.DataFrame()
@@ -157,7 +267,7 @@ def download_oi_history(exchange, symbol: str, days: int) -> pd.DataFrame:
         if len(resp) < 500:
             break
         since = last_time + 1
-        time.sleep(0.1)
+        pass  # 限流器统一控制间隔
 
     if not all_data:
         return pd.DataFrame()
@@ -196,7 +306,7 @@ def download_top_ls_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
         if len(resp) < 500:
             break
         since = last_time + 1
-        time.sleep(0.1)
+        pass  # 限流器统一控制间隔
 
     if not all_data:
         return pd.DataFrame()
@@ -234,7 +344,7 @@ def download_taker_ratio(exchange, symbol: str, days: int) -> pd.DataFrame:
         if len(resp) < 500:
             break
         since = last_time + 1
-        time.sleep(0.1)
+        pass  # 限流器统一控制间隔
 
     if not all_data:
         return pd.DataFrame()
@@ -416,7 +526,7 @@ def main():
                 success += 1
         except Exception as e:
             print(f"  ❌ {symbol} 下载异常: {e}")
-        time.sleep(0.5)  # 避免限频
+        time.sleep(1.0)  # 交易对间隔，配合限流器
 
     print(f"\n{'=' * 50}")
     print(f"✅ 完成: {success}/{len(symbols)} 个交易对下载成功")
