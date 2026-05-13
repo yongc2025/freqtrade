@@ -34,54 +34,54 @@ def create_exchange():
 def _call_fapi(exchange, method_name: str, params: dict):
     """
     兼容不同 ccxt 版本调用 Binance fapi 隐式 API。
-    按优先级尝试多种方式：
-      1. 直接调用隐式方法
-      2. 常见命名变体
-      3. 通过 ccxt 的 fetch 方法
-      4. 直接 HTTP 请求（兜底）
-    """
-    import re
-    from urllib.parse import urlencode
-    from urllib.request import urlopen
-    import json as _json
 
-    # 1. 尝试直接调用
+    ccxt 4.x 方法名映射：
+      - 资金费率: fapiPublicGetFundingRate        (fapiPublic)
+      - 持仓量:   fapiDataGetOpenInterestHist      (fapiData, 非 fapiPublic!)
+      - 多空比:   fapiDataGetTopLongShortPositionRatio (fapiData)
+      - Taker比:  fapiDataGetTakerlongshortRatio   (fapiData)
+
+    自动尝试 fapiPublic -> fapiData -> 直接HTTP 兜底。
+    """
+    # 1. 直接调用
     method = getattr(exchange, method_name, None)
     if callable(method):
         return method(params)
 
-    # 2. 尝试常见变体
-    suffix = method_name.replace("fapiPublicGet", "")
-    variants = [
-        # 原样
-        f"fapiPublicGet{suffix}",
-        # 全小写后缀
-        f"fapiPublicGet{suffix.lower()}",
-        # 每段首字母大写其余小写
-        f"fapiPublicGet{''.join(p[0].upper() + p[1:].lower() if p else '' for p in re.split(r'([A-Z][a-z]*)', suffix) if p)}",
-    ]
-    for variant in variants:
-        method = getattr(exchange, variant, None)
+    # 2. fapiPublic <-> fapiData 互换尝试
+    alt_names = []
+    if "fapiPublicGet" in method_name:
+        alt_names.append(method_name.replace("fapiPublicGet", "fapiDataGet"))
+        alt_names.append(method_name.replace("fapiPublicGet", "fapiDataGet").lower())
+    elif "fapiDataGet" in method_name:
+        alt_names.append(method_name.replace("fapiDataGet", "fapiPublicGet"))
+        alt_names.append(method_name.replace("fapiDataGet", "fapiPublicGet").lower())
+
+    for alt_name in alt_names:
+        method = getattr(exchange, alt_name, None)
         if callable(method):
             return method(params)
 
-    # 3. 尝试 ccxt 的通用 fetch
+    # 3. 直接 HTTP 请求（兜底，不依赖 ccxt 隐式 API）
+    from urllib.parse import urlencode
+    from urllib.request import urlopen
+    import json as _json
+
     path_map = {
-        "fapiPublicGetOpenInterestHist": "/fapi/v1/openInterestHist",
-        "fapiPublicGetTopLongShortPositionRatio": "/futures/data/top-long-short-position-ratio",
-        "fapiPublicGetTakerlongshortRatio": "/futures/data/takerlongshortRatio",
+        # 资金费率
         "fapiPublicGetFundingRate": "/fapi/v1/fundingRate",
+        # 持仓量
+        "fapiDataGetOpenInterestHist": "/futures/data/openInterestHist",
+        "fapiPublicGetOpenInterestHist": "/futures/data/openInterestHist",
+        # 大户多空比
+        "fapiDataGetTopLongShortPositionRatio": "/futures/data/top-long-short-position-ratio",
+        "fapiPublicGetTopLongShortPositionRatio": "/futures/data/top-long-short-position-ratio",
+        # Taker 买卖比
+        "fapiDataGetTakerlongshortRatio": "/futures/data/takerlongshortRatio",
+        "fapiPublicGetTakerlongshortRatio": "/futures/data/takerlongshortRatio",
     }
     path = path_map.get(method_name)
     if path:
-        # 尝试 ccxt 内置 fetch（新版支持）
-        try:
-            url = exchange.urls["fapiPublic"] + path + "?" + urlencode(params)
-            return exchange.fetch(url)
-        except (KeyError, TypeError):
-            pass
-
-        # 4. 直接 HTTP 请求（兜底方案，不依赖 ccxt 隐式 API）
         base_url = "https://fapi.binance.com"
         query = urlencode(params)
         full_url = f"{base_url}{path}?{query}"
