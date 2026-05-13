@@ -353,24 +353,22 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         # 所以在出场逻辑里用滚动窗口估算
 
     def on_trade_close(self, trade, order, **kwargs) -> None:
-        """平仓时清理 + 记录止损日志"""
+        """平仓时清理 + 记录所有出场日志"""
         self._open_trade_pairs.discard(trade.pair)
         self._entry_bb_width.pop(trade.pair, None)
 
-        # 捕获止损出场（freqtrade 自动执行，不经过 custom_exit）
-        exit_reason = getattr(trade, "exit_reason", "")
-        if exit_reason and exit_reason not in ("take_profit", "time_stop_5d"):
-            hold_seconds = int((trade.close_date_utc - trade.open_date_utc).total_seconds()) if trade.close_date_utc else 0
-            profit_pct = round(trade.calc_profit_ratio() * 100, 2) if trade.calc_profit_ratio() else 0
-            self._write_trade_log(
-                action="exit",
-                pair=trade.pair,
-                direction="short" if trade.is_short else "long",
-                price=trade.close_rate or 0,
-                exit_reason=exit_reason,
-                profit_pct=profit_pct,
-                hold_seconds=hold_seconds,
-            )
+        exit_reason = getattr(trade, "exit_reason", "") or "unknown"
+        hold_seconds = int((trade.close_date_utc - trade.open_date_utc).total_seconds()) if trade.close_date_utc else 0
+        profit_pct = round(trade.calc_profit_ratio() * 100, 2) if trade.calc_profit_ratio() else 0
+        self._write_trade_log(
+            action="exit",
+            pair=trade.pair,
+            direction="short" if trade.is_short else "long",
+            price=trade.close_rate or 0,
+            exit_reason=exit_reason,
+            profit_pct=profit_pct,
+            hold_seconds=hold_seconds,
+        )
 
     # ========== 指标计算 ==========
 
@@ -966,8 +964,7 @@ class BinanceFuturesCompressionStrategy(IStrategy):
             ("short", "exit_short", "exit_tag_short"),
         ]:
             signal_key = f"{pair}_{last_idx}_{direction}_exit"
-            has_trade = pair in self._open_trade_pairs
-            if has_trade and dataframe.at[last_idx, exit_col] == 1 and signal_key not in self._logged_signals:
+            if dataframe.at[last_idx, exit_col] == 1 and signal_key not in self._logged_signals:
                 row = dataframe.loc[last_idx]
                 exit_reason = str(row.get(tag_col, "unknown"))
 
@@ -1028,30 +1025,6 @@ class BinanceFuturesCompressionStrategy(IStrategy):
                 exit_reason = "time_stop_5d"
 
         if exit_reason:
-            direction = "short" if trade.is_short else "long"
-            hold_seconds = int((current_time - trade.open_date_utc).total_seconds())
-
-            # 写交易日志
-            self._write_trade_log(
-                action="exit",
-                pair=pair,
-                direction=direction,
-                price=current_rate,
-                exit_reason=exit_reason,
-                profit_pct=round(current_profit * 100, 2),
-                hold_seconds=hold_seconds,
-            )
-
-            # 写 JSONL 信号日志
-            self._write_signal_log({
-                "time": str(current_time),
-                "pair": pair,
-                "direction": direction,
-                "action": "exit",
-                "price": current_rate,
-                "profit_pct": round(current_profit * 100, 2),
-                "exit_reason": exit_reason,
-            })
             return exit_reason
 
         return None
