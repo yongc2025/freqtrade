@@ -113,8 +113,12 @@ class AltcoinCompressionStrategy(IStrategy):
     _gmgn_cache: dict[str, tuple[dict, float]] = {}
     _gmgn_cache_ttl: int = 300  # 5分钟
 
-    # 信号日志去重集合（防止历史数据重复写入）
+    # 持仓交易对追踪（用于出场日志过滤，只记录有实际持仓的币）
+    _open_trade_pairs: set = set()
+
+    # 信号日志去重集合（持久化到文件，防重启丢失）
     _logged_signals: set = set()
+    _logged_signals_path: str = "user_data/logs/.signal_dedup.json"
 
     # GMGN CLI 路径
     _gmgn_cli: str = "gmgn-cli"
@@ -294,7 +298,10 @@ class AltcoinCompressionStrategy(IStrategy):
         signal_key = f"{pair}_{last_idx}_entry"
         if entry_condition.iloc[-1] and signal_key not in self._logged_signals:
             row = dataframe.loc[last_idx]
-            src = row.get("signal_source", "tech")
+            # 重新计算 signal_source，避免与 score_gmgn 矛盾
+            has_gmgn = (self._safe_float(row.get("smart_money_count", 0)) > 0) or \
+                       (self._safe_float(row.get("sniper_count", 0)) > 0)
+            src = "gmgn" if has_gmgn else "tech"
             score_val = self._safe_float(row.get("score", 0))
             score_t = self._safe_float(row.get("score_tech", 0))
             score_g = self._safe_float(row.get("score_gmgn", 0))
@@ -331,12 +338,16 @@ class AltcoinCompressionStrategy(IStrategy):
 
             self._write_signal_log(log_record)
             self._logged_signals.add(signal_key)
+            self._save_logged_signals()
 
         return dataframe
 
     def populate_exit_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         """
         出场信号（多重出场条件，任一触发即出场）
+
+        注意：出场信号对所有 pairlist 里的币计算，但日志只记录有实际持仓的币。
+        Freqtrade 内部也会过滤，只对有持仓的币执行出场。
 
         GMGN 链上恶化信号：
           信号1: 聪明钱撤退 — 归零 + 安全恶化
@@ -349,6 +360,9 @@ class AltcoinCompressionStrategy(IStrategy):
         技术面出场信号：
           信号7: RSI 超买
           信号8: 量价背离（放量下跌 = 分发信号）
+
+        出场原因优先级（低→高）：
+          RSI超买 < 量价背离 < 新钱包激增 < 安全恶化 < 狙击手激增 < 聪明钱下降 < 聪明钱撤退 < 貔貅检测
         """
         pair = metadata["pair"]
 
@@ -415,20 +429,25 @@ class AltcoinCompressionStrategy(IStrategy):
             "exit_long",
         ] = 1
 
-        # 记录出场原因（按优先级，后写的覆盖先写的）
-        dataframe.loc[signal_volume_divergence, "exit_tag"] = "volume_divergence"
+        # 记录出场原因（按优先级，高优先级后写覆盖低优先级）
+        # 优先级从低到高：rsi < volume_divergence < fresh_wallet < security < sniper < smart_money < honeypot
         dataframe.loc[signal_rsi_overbought, "exit_tag"] = "rsi_overbought"
+        dataframe.loc[signal_volume_divergence, "exit_tag"] = "volume_divergence"
         dataframe.loc[signal_fresh_wallet, "exit_tag"] = "fresh_wallet_spike"
-        dataframe.loc[signal_honeypot, "exit_tag"] = "honeypot_detected"
         dataframe.loc[security_deteriorated, "exit_tag"] = "security_deteriorated"
         dataframe.loc[sniper_spike, "exit_tag"] = "sniper_spike"
         dataframe.loc[signal_smart_money_decline, "exit_tag"] = "smart_money_decline"
         dataframe.loc[signal_smart_money_exit, "exit_tag"] = "smart_money_exit"
+        dataframe.loc[signal_honeypot, "exit_tag"] = "honeypot_detected"  # 最高优先级
 
-        # === 写出场信号日志（仅记录最新 candle，去重） ===
+        # === 写出场信号日志（仅对有实际持仓的币记录） ===
         last_idx = dataframe.index[-1]
         signal_key = f"{pair}_{last_idx}_exit"
-        if dataframe.at[last_idx, "exit_long"] == 1 and signal_key not in self._logged_signals:
+
+        # 只有有实际持仓的币才记录出场日志
+        has_open_trade = pair in self._open_trade_pairs
+
+        if has_open_trade and dataframe.at[last_idx, "exit_long"] == 1 and signal_key not in self._logged_signals:
             row = dataframe.loc[last_idx]
             src = row.get("signal_source", "tech")
             exit_reason = row.get("exit_tag", "unknown")
@@ -437,6 +456,11 @@ class AltcoinCompressionStrategy(IStrategy):
             gmgn_exits = {"smart_money_exit", "smart_money_decline", "sniper_spike",
                           "security_deteriorated", "honeypot_detected", "fresh_wallet_spike"}
             exit_source = "gmgn" if exit_reason in gmgn_exits else "tech"
+
+            # 重新计算 signal_source（与入场日志一致）
+            has_gmgn = (self._safe_float(row.get("smart_money_count", 0)) > 0) or \
+                       (self._safe_float(row.get("sniper_count", 0)) > 0)
+            src = "gmgn" if has_gmgn else "tech"
 
             log_record = {
                 "time": str(last_idx),
@@ -460,6 +484,7 @@ class AltcoinCompressionStrategy(IStrategy):
 
             self._write_signal_log(log_record)
             self._logged_signals.add(signal_key)
+            self._save_logged_signals()
 
         return dataframe
 
@@ -957,3 +982,44 @@ class AltcoinCompressionStrategy(IStrategy):
             return float(value)
         except (ValueError, TypeError):
             return 0.0
+
+    # ========== 交易生命周期回调（追踪持仓） ==========
+
+    def bot_start(self, **kwargs) -> None:
+        """Bot 启动时加载去重集合"""
+        self._load_logged_signals()
+
+    def on_trade_open(self, trade, order, **kwargs) -> None:
+        """开仓时记录交易对"""
+        self._open_trade_pairs.add(trade.pair)
+        logger.debug(f"AltcoinCompression: Trade opened {trade.pair}, tracking {len(self._open_trade_pairs)} pairs")
+
+    def on_trade_close(self, trade, order, **kwargs) -> None:
+        """平仓时移除交易对"""
+        self._open_trade_pairs.discard(trade.pair)
+        logger.debug(f"AltcoinCompression: Trade closed {trade.pair}, tracking {len(self._open_trade_pairs)} pairs")
+
+    # ========== 去重集合持久化 ==========
+
+    def _load_logged_signals(self) -> None:
+        """从文件加载去重集合"""
+        try:
+            path = Path(self._logged_signals_path)
+            if path.exists():
+                with open(path, "r") as f:
+                    data = json.load(f)
+                self._logged_signals = set(data)
+                logger.debug(f"AltcoinCompression: Loaded {len(self._logged_signals)} dedup keys")
+        except Exception as e:
+            logger.debug(f"AltcoinCompression: Failed to load dedup file: {e}")
+            self._logged_signals = set()
+
+    def _save_logged_signals(self) -> None:
+        """保存去重集合到文件"""
+        try:
+            path = Path(self._logged_signals_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w") as f:
+                json.dump(list(self._logged_signals), f)
+        except Exception as e:
+            logger.debug(f"AltcoinCompression: Failed to save dedup file: {e}")
