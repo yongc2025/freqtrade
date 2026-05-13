@@ -265,10 +265,28 @@ def download_pair(exchange, symbol: str, days: int, output_dir: Path) -> bool:
     return True
 
 
+def load_pairs_from_config(config_path: str) -> list[str]:
+    """从 freqtrade config 文件读取交易对列表"""
+    import json
+
+    with open(config_path, "r") as f:
+        config = json.load(f)
+
+    # 优先用 pair_whitelist
+    whitelist = config.get("exchange", {}).get("pair_whitelist", [])
+    if whitelist:
+        return whitelist
+
+    # pair_whitelist 为空，从 pairlist 推断（VolumePairList 等动态 pairlist 无法直接读取）
+    print("⚠ pair_whitelist 为空（使用了动态 pairlist），请用 --pairs 指定或用 --config 配合 VolumePairList")
+    return []
+
+
 def main():
     parser = argparse.ArgumentParser(description="Binance 合约历史数据下载器")
     parser.add_argument("--days", type=int, default=30, help="下载天数（默认30，Binance最多保留30天）")
-    parser.add_argument("--pairs", type=str, default="", help="交易对列表，逗号分隔（默认下载 VolumePairList 前20）")
+    parser.add_argument("--pairs", type=str, default="", help="交易对列表，逗号分隔（优先级高于 --config）")
+    parser.add_argument("--config", type=str, default="user_data/config_binance_futures.json", help="freqtrade 配置文件路径")
     parser.add_argument("--output", type=str, default="user_data/data/contract", help="输出目录")
     args = parser.parse_args()
 
@@ -286,38 +304,41 @@ def main():
     # 确定交易对
     if args.pairs:
         symbols = [p.strip() for p in args.pairs.split(",")]
-        # 自动补全格式
         symbols = [
             s if "/" in s else f"{s}/USDT:USDT"
             for s in symbols
         ]
     else:
-        # 默认下载成交量前 20 的 USDT 永续合约
-        print("\n获取成交量排名...")
-        tickers = exchange.fetch_tickers()
-        usdt_futures = [
-            t for t in tickers
-            if t.endswith(":USDT") and "/USDT" in t
-        ]
-        # 按成交额排序
-        usdt_futures.sort(
-            key=lambda t: tickers[t].get("quoteVolume", 0) or 0,
-            reverse=True,
-        )
-        # 排除稳定币和反向代币
-        skip = {"BUSD", "USDC", "TUSD", "DAI", "USDP", "FDUSD"}
-        symbols = []
-        for s in usdt_futures:
-            base = s.split("/")[0]
-            if base in skip:
-                continue
-            if any(x in base for x in ["BEAR", "BULL", "UP", "DOWN", "HEDGE"]):
-                continue
-            symbols.append(s)
-            if len(symbols) >= 20:
-                break
+        symbols = load_pairs_from_config(args.config)
+        if not symbols:
+            # 回退：下载成交量前 20
+            print("\n从 config 未获取到交易对，使用成交量前 20...")
+            tickers = exchange.fetch_tickers()
+            usdt_futures = [
+                t for t in tickers
+                if t.endswith(":USDT") and "/USDT" in t
+            ]
+            usdt_futures.sort(
+                key=lambda t: tickers[t].get("quoteVolume", 0) or 0,
+                reverse=True,
+            )
+            skip = {"BUSD", "USDC", "TUSD", "DAI", "USDP", "FDUSD"}
+            symbols = []
+            for s in usdt_futures:
+                base = s.split("/")[0]
+                if base in skip:
+                    continue
+                if any(x in base for x in ["BEAR", "BULL", "UP", "DOWN", "HEDGE"]):
+                    continue
+                symbols.append(s)
+                if len(symbols) >= 20:
+                    break
 
     print(f"\n交易对 ({len(symbols)}):")
+    if args.pairs:
+        print(f"  来源: --pairs 参数")
+    elif symbols:
+        print(f"  来源: {args.config}")
     for s in symbols:
         print(f"  - {s}")
 
