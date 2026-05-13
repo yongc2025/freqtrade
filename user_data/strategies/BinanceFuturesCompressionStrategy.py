@@ -519,6 +519,11 @@ class BinanceFuturesCompressionStrategy(IStrategy):
             if "date" not in fr_reset.columns:
                 fr_reset = fr_reset.rename(columns={"index": "date"})
 
+            # 确保两边 date 列类型一致（merge_asof 要求同类型）
+            if df_reset["date"].dtype != fr_reset["date"].dtype:
+                fr_reset["date"] = pd.to_datetime(fr_reset["date"], utc=True)
+                df_reset["date"] = pd.to_datetime(df_reset["date"], utc=True)
+
             merged = pd.merge_asof(
                 df_reset.sort_values("date"),
                 fr_reset[["date", "funding_rate"]].sort_values("date"),
