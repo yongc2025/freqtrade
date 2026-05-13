@@ -263,6 +263,10 @@ def main():
         skipped = 0
         failed = 0
 
+        # 预填充刚用过 /coins/list，等一下再开始详情请求，避免叠加限流
+        print(f"  ⏳ 等待 15s 避免与预填充请求叠加限流...")
+        time.sleep(15)
+
         for i, (symbol, coins) in enumerate(need_fetch.items(), 1):
             print(f"  [{i}/{total}] {symbol}...", end=" ", flush=True)
 
