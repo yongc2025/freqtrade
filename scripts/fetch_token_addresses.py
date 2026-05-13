@@ -15,6 +15,7 @@ import json
 import time
 import sys
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 
 try:
     import requests
@@ -165,11 +166,21 @@ def get_coingecko_coin_detail(coin_id: str) -> dict | None:
 
 
 def save_output(cache: dict):
-    """生成输出文件（只包含有地址的）"""
+    """生成输出文件（只包含有地址的），带元数据头"""
     result = {k: v for k, v in cache.items() if v}
+    tz = timezone(timedelta(hours=8))
+    output = {
+        "_meta": {
+            "updated_at": datetime.now(tz).isoformat(),
+            "source": "coingecko",
+            "total_tokens": len(result),
+            "total_cached": len(cache),
+        },
+        **result,
+    }
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
+        json.dump(output, f, indent=2, ensure_ascii=False)
     return len(result)
 
 
