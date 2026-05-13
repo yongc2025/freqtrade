@@ -1,39 +1,31 @@
 {
     "$schema": "https://schema.freqtrade.io/schema.json",
-
     "strategy": "AltcoinCompressionStrategy",
     "user_data_dir": "user_data",
-
     "max_open_trades": 5,
     "stake_currency": "USDT",
     "stake_amount": "unlimited",
     "tradable_balance_ratio": 0.75,
     "fiat_display_currency": "USD",
-
     "dry_run": true,
     "dry_run_wallet": 10000,
-
     "timeframe": "1h",
-    "bot_name": "GMGN-Altcoin-DryRun",
+    "bot_name": "GMGN-Altcoin-DryRun-v2",
     "initial_state": "running",
     "force_entry_enable": false,
-
     "trailing_stop": true,
     "trailing_stop_positive": 0.12,
-    "trailing_stop_positive_offset": 0.20,
+    "trailing_stop_positive_offset": 0.2,
     "trailing_only_offset_is_reached": true,
     "stoploss": -0.08,
-
     "minimal_roi": {
         "0": 100
     },
-
     "trading_mode": "futures",
     "margin_mode": "isolated",
     "leverage": 1,
     "liquidation_buffer": 0.05,
     "fee": 0.0005,
-
     "order_types": {
         "entry": "limit",
         "exit": "limit",
@@ -41,7 +33,6 @@
         "stoploss": "market",
         "stoploss_on_exchange": true
     },
-
     "entry_pricing": {
         "price_side": "other",
         "use_order_book": true,
@@ -51,36 +42,28 @@
             "bids_to_ask_delta": 1
         }
     },
-
     "exit_pricing": {
         "price_side": "other",
         "use_order_book": true,
         "order_book_top": 1
     },
-
     "unfilledtimeout": {
         "entry": 10,
         "exit": 10,
         "exit_timeout_count": 0
     },
-
     "pairlists": [
         {
-            "method": "GMGNPairList",
-            "number_assets": 20,
-            "chain": "sol",
-            "trending_limit": 30,
-            "smartmoney_limit": 20,
-            "max_workers": 10,
-            "max_rug_ratio": 0.3,
-            "max_bundler_rate": 0.2,
-            "max_rat_trader_rate": 0.15,
-            "min_liquidity": 50000,
-            "refresh_period": 3600,
-            "gmgn_cli": "C:\\Users\\yongc20\\AppData\\Roaming\\npm\\gmgn-cli.cmd"
+            "method": "VolumePairList",
+            "number_assets": 40,
+            "sort_key": "quoteVolume",
+            "refresh_period": 900
+        },
+        {
+            "method": "AgeFilter",
+            "min_days_listed": 30
         }
     ],
-
     "exchange": {
         "name": "binance",
         "key": "",
@@ -123,10 +106,8 @@
             "DOGE/USDT:USDT"
         ]
     },
-
     "db_url": "sqlite:///user_data/tradesv3_gmgn_dryrun.sqlite?check_same_thread=False",
     "logfile": "user_data/logs/freqtrade_gmgn_dryrun.log",
-
     "internals": {
         "process_throttle_secs": 5
     }

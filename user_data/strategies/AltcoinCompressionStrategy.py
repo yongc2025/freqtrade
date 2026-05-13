@@ -113,6 +113,10 @@ class AltcoinCompressionStrategy(IStrategy):
     _gmgn_cli: str = "gmgn-cli"
     _chain: str = "sol"
 
+    # Direction A 模式：Binance 选币 + GMGN 安全过滤
+    # 大部分 Binance 期货代币没有 Solana 地址，GMGN 数据不可用时自动降级为纯技术面
+    _gmgn_available: bool = True
+
     # 数据快照记录（用于回测）
     _snapshot_dir: str = "user_data/gmgn_history"
     _snapshot_enabled: bool = True
@@ -241,9 +245,13 @@ class AltcoinCompressionStrategy(IStrategy):
                 & (dataframe["volume_ratio"] < self.volume_ratio_threshold.value)
                 & (dataframe["rsi"] > self.rsi_lower.value)
                 & (dataframe["rsi"] < self.rsi_upper.value)
-                # 第3层：聪明钱确认
-                & (dataframe["smart_money_count"] >= self.min_smart_money_count.value)
-                & (dataframe["sniper_count"] < self.max_sniper_count.value)
+                # 第3层：聪明钱确认（GMGN 数据可用时才检查）
+                & (
+                    (dataframe["smart_money_count"] == 0)
+                    & (dataframe["sniper_count"] == 0)
+                    | (dataframe["smart_money_count"] >= self.min_smart_money_count.value)
+                    & (dataframe["sniper_count"] < self.max_sniper_count.value)
+                )
                 # 第4层：评分门槛
                 & (dataframe["score"] >= self.min_entry_score.value)
                 # 基本数据有效性
@@ -487,6 +495,10 @@ class AltcoinCompressionStrategy(IStrategy):
         score += momentum_score
 
         # --- 聪明钱确认 (30分) ---
+        # GMGN 数据不可用时（smart_money_count==0 && sniper_count==0），
+        # 给中性分数，让技术面决定
+        gmgn_has_data = (dataframe["smart_money_count"] > 0) | (dataframe["sniper_count"] > 0)
+
         # 聪明钱数量 (12分)
         sm_score = pd.Series(0, index=dataframe.index, dtype=float)
         sm_score[dataframe["smart_money_count"] >= 8] = 12
@@ -499,6 +511,8 @@ class AltcoinCompressionStrategy(IStrategy):
         sm_score[
             (dataframe["smart_money_count"] >= 1) & (dataframe["smart_money_count"] < 3)
         ] = 5
+        # GMGN 无数据时给中性分 (6/12)
+        sm_score[~gmgn_has_data] = 6
         score += sm_score
 
         # KOL 持仓 (10分)
@@ -506,6 +520,8 @@ class AltcoinCompressionStrategy(IStrategy):
         kol_score[dataframe["kol_count"] >= 3] = 10
         kol_score[dataframe["kol_count"] == 2] = 8
         kol_score[dataframe["kol_count"] == 1] = 5
+        # GMGN 无数据时给中性分 (5/10)
+        kol_score[~gmgn_has_data] = 5
         score += kol_score
 
         # 狙击手数量少 (8分) - 越少越好
@@ -520,7 +536,12 @@ class AltcoinCompressionStrategy(IStrategy):
         sniper_score[
             (dataframe["sniper_count"] >= 50) & (dataframe["sniper_count"] < 100)
         ] = 2
+        # GMGN 无数据时给中性分 (4/8)
+        sniper_score[~gmgn_has_data] = 4
         score += sniper_score
+
+        # 安全评分 (10分) — GMGN 无数据时给满分（Binance 已审核）
+        # rug/bundler/rat 默认为 0，会自动得满分，无需额外处理
 
         # --- 安全评分 (10分) ---
         # rug_ratio (4分)
@@ -592,7 +613,10 @@ class AltcoinCompressionStrategy(IStrategy):
         symbol = pair.split("/")[0]
         address = self._resolve_address(symbol)
         if not address:
-            logger.debug(f"AltcoinCompression: No address for {symbol}, using defaults")
+            # Binance 上大部分代币没有 Solana 地址，这是正常的
+            # 标记为 GMGN 不可用，策略降级为纯技术面
+            self._gmgn_available = False
+            logger.debug(f"AltcoinCompression: No Solana address for {symbol}, GMGN checks skipped")
             return {}
 
         # 从安全缓存文件读取（GMGNPairList 已写入的数据）
