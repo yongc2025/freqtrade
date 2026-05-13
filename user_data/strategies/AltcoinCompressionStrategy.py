@@ -293,11 +293,11 @@ class AltcoinCompressionStrategy(IStrategy):
 
         dataframe.loc[entry_condition, "enter_long"] = 1
 
-        # === 写入场信号日志 ===
+        # === 写入场信号日志（仅记录最新 candle） ===
         pair = metadata["pair"]
-        entry_rows = dataframe[entry_condition]
-        for idx_pos in entry_rows.index:
-            row = dataframe.loc[idx_pos]
+        last_idx = dataframe.index[-1]
+        if entry_condition.iloc[-1]:
+            row = dataframe.loc[last_idx]
             src = row.get("signal_source", "tech")
             score_val = self._safe_float(row.get("score", 0))
             score_t = self._safe_float(row.get("score_tech", 0))
@@ -305,7 +305,7 @@ class AltcoinCompressionStrategy(IStrategy):
             max_score = 90 if src == "gmgn" else 60
 
             log_record = {
-                "time": str(idx_pos),
+                "time": str(last_idx),
                 "pair": pair,
                 "direction": "long",
                 "action": "entry",
@@ -438,10 +438,10 @@ class AltcoinCompressionStrategy(IStrategy):
         dataframe.loc[signal_smart_money_decline, "exit_tag"] = "smart_money_decline"
         dataframe.loc[signal_smart_money_exit, "exit_tag"] = "smart_money_exit"
 
-        # === 写出场信号日志 ===
-        exit_rows = dataframe[dataframe["exit_long"] == 1]
-        for idx_pos in exit_rows.index:
-            row = dataframe.loc[idx_pos]
+        # === 写出场信号日志（仅记录最新 candle） ===
+        last_idx = dataframe.index[-1]
+        if dataframe.at[last_idx, "exit_long"] == 1:
+            row = dataframe.loc[last_idx]
             src = row.get("signal_source", "tech")
             exit_reason = row.get("exit_tag", "unknown")
 
@@ -451,7 +451,7 @@ class AltcoinCompressionStrategy(IStrategy):
             exit_source = "gmgn" if exit_reason in gmgn_exits else "tech"
 
             log_record = {
-                "time": str(idx_pos),
+                "time": str(last_idx),
                 "pair": pair,
                 "direction": "long",
                 "action": "exit",
@@ -479,13 +479,13 @@ class AltcoinCompressionStrategy(IStrategy):
                 rug = round(self._safe_float(row.get("rug_ratio", 0)), 3)
                 detail = f"聪明钱归零(SM={sm})且Rug比率偏高({rug:.3f}>0.2)，疑似跑路"
             elif exit_reason == "smart_money_decline":
-                sm_now = round(self._safe_float(sm_ma3.loc[idx_pos]), 1)
-                sm_prev = round(self._safe_float(sm_ma3_prev.loc[idx_pos]), 1)
-                ratio = round(self._safe_float(sm_decline_ratio.loc[idx_pos]) * 100, 1)
+                sm_now = round(self._safe_float(sm_ma3.loc[last_idx]), 1)
+                sm_prev = round(self._safe_float(sm_ma3_prev.loc[last_idx]), 1)
+                ratio = round(self._safe_float(sm_decline_ratio.loc[last_idx]) * 100, 1)
                 detail = f"聪明钱3周期均值从{sm_prev}降至{sm_now}，下降{ratio}%"
             elif exit_reason == "sniper_spike":
-                sn_now = round(self._safe_float(sniper_ma3.loc[idx_pos]), 1)
-                sn_prev = round(self._safe_float(sniper_ma3_prev.loc[idx_pos]), 1)
+                sn_now = round(self._safe_float(sniper_ma3.loc[last_idx]), 1)
+                sn_prev = round(self._safe_float(sniper_ma3_prev.loc[last_idx]), 1)
                 detail = f"狙击手3周期均值从{sn_prev}飙升至{sn_now}(>50且翻倍)，机器人涌入"
             elif exit_reason == "security_deteriorated":
                 rug = round(self._safe_float(row.get("rug_ratio", 0)), 3)
