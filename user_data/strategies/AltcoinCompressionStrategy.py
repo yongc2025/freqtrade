@@ -971,15 +971,28 @@ class AltcoinCompressionStrategy(IStrategy):
                 env=env,
             )
             if result.returncode != 0:
+                stderr_short = (result.stderr or "").strip()[:200]
+                logger.warning(
+                    f"AltcoinCompression: gmgn-cli exit code {result.returncode} "
+                    f"for {' '.join(args)} | stderr: {stderr_short}"
+                )
                 return None
             output = result.stdout.strip()
             if not output:
+                logger.warning(f"AltcoinCompression: gmgn-cli returned empty output for {' '.join(args)}")
                 return None
             return json.loads(output)
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+        except subprocess.TimeoutExpired:
+            logger.warning(f"AltcoinCompression: gmgn-cli timeout (10s) for {' '.join(args)}")
+            return None
+        except FileNotFoundError:
+            logger.warning(f"AltcoinCompression: gmgn-cli not found at '{self._gmgn_cli}', is it installed?")
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning(f"AltcoinCompression: gmgn-cli invalid JSON for {' '.join(args)}: {e}")
             return None
         except Exception as e:
-            logger.debug(f"AltcoinCompression: gmgn-cli error: {e}")
+            logger.warning(f"AltcoinCompression: gmgn-cli error for {' '.join(args)}: {e}")
             return None
 
     @staticmethod
