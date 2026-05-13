@@ -27,6 +27,30 @@ COINGECKO_API = "https://api.coingecko.com/api/v3"
 OUTPUT_PATH = Path(__file__).parent.parent / "user_data" / "token_addresses.json"
 CACHE_PATH = Path(__file__).parent.parent / "user_data" / ".token_cache.json"
 
+# ======== 过滤规则 ========
+# 稳定币
+STABLECOINS = {"USDC", "USDT", "BUSD", "DAI", "TUSD", "FDUSD", "USDP", "GUSD", "FRAX", "LUSD", "SUSD", "CUSD"}
+# 黄金/大宗商品锚定代币
+COMMODITY_TOKENS = {"PAXG", "XAUT", "XAU", "GLD"}
+# 1000x 前缀代币 (低价 meme 币的 1000 倍面值)
+# 这些代币的合约地址与原生代币相同，如 1000SHIB 的地址 = SHIB 的地址
+# 如果需要保留，设为 False 即可跳过前缀但不跳过原生代币
+FILTER_1000X = True
+
+
+def should_skip_symbol(symbol: str) -> bool:
+    """判断是否跳过该代币"""
+    # 稳定币
+    if symbol.upper() in STABLECOINS:
+        return True
+    # 黄金/大宗商品
+    if symbol.upper() in COMMODITY_TOKENS:
+        return True
+    # 1000x 前缀 (如果开启过滤)
+    if FILTER_1000X and (symbol.startswith("1000") or symbol.startswith("1000000")):
+        return True
+    return False
+
 # 限速配置 (CoinGecko 免费 API: ~10-15 次/分钟)
 REQUEST_INTERVAL = 6.0       # 每次请求间隔 (秒)
 MAX_RETRIES = 5              # 最大重试次数
@@ -80,21 +104,24 @@ def api_get(url: str, params: dict = None, timeout: int = 15) -> requests.Respon
     return None
 
 
-def get_binance_futures_symbols() -> list[str]:
-    """从 Binance 获取所有期货交易对的 symbol"""
+def get_binance_futures_symbols() -> tuple[list[str], list[str]]:
+    """从 Binance 获取所有期货交易对的 symbol，返回 (保留列表, 被过滤列表)"""
     url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
     try:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
         data = resp.json()
-        symbols = set()
+        all_symbols = set()
         for s in data.get("symbols", []):
             if s.get("status") == "TRADING" and s.get("quoteAsset") == "USDT":
-                symbols.add(s["baseAsset"])
-        return sorted(symbols)
+                all_symbols.add(s["baseAsset"])
+
+        kept = sorted(s for s in all_symbols if not should_skip_symbol(s))
+        filtered = sorted(s for s in all_symbols if should_skip_symbol(s))
+        return kept, filtered
     except Exception as e:
         print(f"获取 Binance 期货列表失败: {e}")
-        return []
+        return [], []
 
 
 def get_coingecko_coins_list() -> list[dict]:
@@ -155,11 +182,14 @@ def main():
 
     # Step 1: 获取 Binance 期货所有 symbol
     print("\n[1/3] 获取 Binance 期货代币列表...")
-    binance_symbols = get_binance_futures_symbols()
-    print(f"  共 {len(binance_symbols)} 个交易对")
+    binance_symbols, filtered_symbols = get_binance_futures_symbols()
+    print(f"  总交易对: {len(binance_symbols) + len(filtered_symbols)}")
+    if filtered_symbols:
+        print(f"  🚫 已过滤: {', '.join(filtered_symbols[:10])}{'...' if len(filtered_symbols) > 10 else ''}")
+        print(f"  ✅ 保留: {len(binance_symbols)} 个")
 
     if not binance_symbols:
-        print("无法获取 Binance 期货列表，退出")
+        print("没有需要处理的代币，退出")
         return
 
     # Step 2: 获取 CoinGecko 代币列表
