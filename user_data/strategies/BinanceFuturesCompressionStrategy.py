@@ -946,10 +946,10 @@ class BinanceFuturesCompressionStrategy(IStrategy):
             & (dataframe["macd_hist"].shift(1) >= 0)
         )
 
-        # 信号7: 收盘价跌破 EMA7（短期趋势反转，压缩策略入场后价格跌破短期均线应离场）
+        # 信号7: 收盘价跌破 EMA25（用更平滑的均线过滤假信号）
         signal_price_below_ema7 = (
-            (dataframe["close"] < dataframe["ema7"])
-            & (dataframe["close"].shift(1) >= dataframe["ema7"].shift(1))
+            (dataframe["close"] < dataframe["ema25"])
+            & (dataframe["close"].shift(1) >= dataframe["ema25"].shift(1))
         )
 
         # 信号8: RSI 从高位回落（RSI 曾超过 60 后跌破 55）
@@ -995,10 +995,10 @@ class BinanceFuturesCompressionStrategy(IStrategy):
             & (dataframe["macd_hist"].shift(1) <= 0)
         )
 
-        # 收盘价突破 EMA7（做空时价格涨破短期均线应离场）
+        # 收盘价突破 EMA25（做空时价格涨破中期均线应离场）
         signal_price_above_ema7 = (
-            (dataframe["close"] > dataframe["ema7"])
-            & (dataframe["close"].shift(1) <= dataframe["ema7"].shift(1))
+            (dataframe["close"] > dataframe["ema25"])
+            & (dataframe["close"].shift(1) <= dataframe["ema25"].shift(1))
         )
 
         # RSI 从低位回升
