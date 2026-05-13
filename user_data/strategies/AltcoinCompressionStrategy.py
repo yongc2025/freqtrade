@@ -603,7 +603,7 @@ class AltcoinCompressionStrategy(IStrategy):
             score = record.get("score", {})
             tech = record.get("tech", {})
             parts = [
-                f"[入场] {pair} @ {price:.4f} | {now_str}",
+                f"{now_str} | [入场] {pair} @ {price:.4f}",
                 f"来源={source_cn}",
                 f"总分={score.get('total', 0):.0f}/{score.get('max', 0)}",
                 f"BB_pctl={tech.get('bb_width_pctl', 0):.3f}",
@@ -643,7 +643,7 @@ class AltcoinCompressionStrategy(IStrategy):
             }.get(exit_reason, exit_reason)
 
             parts = [
-                f"[出场] {pair} @ {price:.4f}",
+                f"{now_str} | [出场] {pair} @ {price:.4f}",
                 f"原因={reason_cn}",
                 f"来源={exit_source_cn}",
             ]
