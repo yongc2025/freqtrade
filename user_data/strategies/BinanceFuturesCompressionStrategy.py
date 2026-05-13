@@ -316,8 +316,8 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         help="大户多空比低于此值，做多平仓；高于 1/此值，做空平仓"
     )
     # RSI 超买/超卖
-    rsi_overbought = IntParameter(70, 85, default=75, space="sell", optimize=True)
-    rsi_oversold = IntParameter(15, 30, default=25, space="sell", optimize=True)
+    rsi_overbought = IntParameter(60, 80, default=68, space="sell", optimize=True)
+    rsi_oversold = IntParameter(20, 40, default=32, space="sell", optimize=True)
     # 布林带宽度扩大倍数
     bb_width_expansion = DecimalParameter(
         1.5, 3.0, default=2.0, decimals=1, space="sell", optimize=True,
