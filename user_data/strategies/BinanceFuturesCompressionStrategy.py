@@ -429,14 +429,20 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         dataframe["macd_hist"] = macd["macdhist"]
 
         # ========== Binance 合约数据 ==========
-        contract = self._get_contract_data(metadata["pair"])
-
-        dataframe["funding_rate"] = contract["funding_rate"]
-        dataframe["oi"] = contract["oi"]
-        dataframe["oi_change_pct"] = contract["oi_change_pct"]
-        dataframe["top_ls_ratio"] = contract["top_ls_ratio"]
-        dataframe["taker_ls_ratio"] = contract["taker_ls_ratio"]
-        dataframe["data_mode"] = contract["data_mode"]
+        contract_df = self._load_contract_csv(metadata["pair"])
+        if contract_df is not None and not contract_df.empty:
+            # 回测模式：从 CSV 加载历史数据，按时间戳合并
+            dataframe = self._merge_contract_to_ohlcv(dataframe, contract_df)
+            dataframe["data_mode"] = "full"
+        else:
+            # 实盘模式：调用 Binance API
+            contract = self._get_contract_data(metadata["pair"])
+            dataframe["funding_rate"] = contract["funding_rate"]
+            dataframe["oi"] = contract["oi"]
+            dataframe["oi_change_pct"] = contract["oi_change_pct"]
+            dataframe["top_ls_ratio"] = contract["top_ls_ratio"]
+            dataframe["taker_ls_ratio"] = contract["taker_ls_ratio"]
+            dataframe["data_mode"] = contract["data_mode"]
 
         # ========== 评分 ==========
         dataframe["score"] = self._calculate_score(dataframe)
@@ -444,7 +450,7 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         return dataframe
 
     def _get_contract_data(self, pair: str) -> dict:
-        """获取合约数据（带容错）"""
+        """获取合约数据（实盘模式，调用 Binance API）"""
         default = {
             "funding_rate": 0.0,
             "oi": 0.0,
@@ -462,6 +468,96 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         except Exception as e:
             logger.warning(f"BinanceFuturesCompression: Failed to get contract data for {pair}: {e}")
             return default
+
+    def _load_contract_csv(self, pair: str) -> pd.DataFrame | None:
+        """
+        加载历史合约数据 CSV（回测模式）
+
+        文件路径：user_data/data/contract/DOGE_USDT_USDT_contract.csv
+        CSV 列：timestamp, funding_rate, oi, oi_value, top_ls_ratio, taker_ls_ratio
+        """
+        pair_name = pair.replace("/", "_").replace(":", "_")
+        csv_path = Path(f"user_data/data/contract/{pair_name}_contract.csv")
+
+        if not csv_path.exists():
+            return None
+
+        try:
+            df = pd.read_csv(csv_path, parse_dates=["timestamp"])
+            # 确保 timestamp 是 UTC
+            if df["timestamp"].dt.tz is None:
+                df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
+            else:
+                df["timestamp"] = df["timestamp"].dt.tz_convert("UTC")
+            return df
+        except Exception as e:
+            logger.debug(f"BinanceFuturesCompression: Failed to load contract CSV for {pair}: {e}")
+            return None
+
+    def _merge_contract_to_ohlcv(self, dataframe: DataFrame, contract_df: pd.DataFrame) -> DataFrame:
+        """
+        将历史合约数据合并到 OHLCV dataframe
+
+        合约数据是 5min 粒度，OHLCV 是 1h，用 merge_asof 按最近时间对齐。
+        """
+        # 确保 dataframe 的 index 是 datetime
+        if not isinstance(dataframe.index, pd.DatetimeIndex):
+            # freqtrade 的 dataframe index 通常是整数，但 date 列是 datetime
+            if "date" in dataframe.columns:
+                dataframe = dataframe.set_index("date")
+
+        # 确保 UTC
+        if dataframe.index.tz is None:
+            dataframe.index = dataframe.index.tz_localize("UTC")
+
+        # 准备合约数据
+        contract_df = contract_df.sort_values("timestamp").copy()
+        contract_df = contract_df.set_index("timestamp")
+
+        # 计算 OI 变化百分比（5min → resample 到 1h 再算）
+        if "oi" in contract_df.columns:
+            oi_hourly = contract_df["oi"].resample("1h").last().dropna()
+            oi_change = oi_hourly.pct_change() * 100
+            oi_change.name = "oi_change_pct"
+
+        # 合约数据 resample 到 1h
+        contract_hourly = contract_df.resample("1h").last().ffill()
+
+        # 计算 OI 变化
+        if "oi" in contract_hourly.columns:
+            contract_hourly["oi_change_pct"] = contract_hourly["oi"].pct_change() * 100
+
+        # merge
+        dataframe = dataframe.copy()
+        for col in ["funding_rate", "oi", "oi_change_pct", "top_ls_ratio", "taker_ls_ratio"]:
+            if col in contract_hourly.columns:
+                # 按最近时间对齐
+                merged = pd.merge_asof(
+                    dataframe.reset_index().rename(columns={"index": "date"}) if "date" not in dataframe.columns else dataframe.reset_index(),
+                    contract_hourly[[col]].reset_index().rename(columns={"timestamp": "date"}),
+                    on="date",
+                    direction="nearest",
+                    tolerance=pd.Timedelta("2h"),
+                )
+                if col in merged.columns:
+                    dataframe[col] = merged[col].values
+
+        # 填充缺失值
+        for col in ["funding_rate", "top_ls_ratio", "taker_ls_ratio"]:
+            if col in dataframe.columns:
+                dataframe[col] = dataframe[col].fillna(
+                    0.0 if col == "funding_rate" else 1.0
+                )
+        if "oi_change_pct" in dataframe.columns:
+            dataframe["oi_change_pct"] = dataframe["oi_change_pct"].fillna(0.0)
+        if "oi" in dataframe.columns:
+            dataframe["oi"] = dataframe["oi"].fillna(0.0)
+
+        # 恢复 index
+        if "date" in dataframe.columns and not isinstance(dataframe.index, pd.DatetimeIndex):
+            dataframe = dataframe.set_index("date")
+
+        return dataframe
 
     # ========== 评分模型 ==========
 
