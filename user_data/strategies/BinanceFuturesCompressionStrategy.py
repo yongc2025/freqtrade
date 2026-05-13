@@ -509,12 +509,24 @@ class BinanceFuturesCompressionStrategy(IStrategy):
             fr_series = fr_df[["close"]].rename(columns={"close": "funding_rate"})
             fr_series = fr_series[~fr_series.index.duplicated(keep="last")]
 
-            # 按 date 对齐
-            if "date" in fr_series.columns:
-                fr_series = fr_series.set_index("date")
+            # 用 merge_asof 按 date 列对齐（避免 index 类型不匹配）
+            df_reset = dataframe.reset_index() if "date" not in dataframe.columns else dataframe.copy()
+            # 确保有 date 列名
+            if "date" not in df_reset.columns:
+                df_reset = df_reset.rename(columns={"index": "date"})
 
-            # merge
-            dataframe = dataframe.join(fr_series, how="left")
+            fr_reset = fr_series.reset_index() if "date" not in fr_series.columns else fr_series.copy()
+            if "date" not in fr_reset.columns:
+                fr_reset = fr_reset.rename(columns={"index": "date"})
+
+            merged = pd.merge_asof(
+                df_reset.sort_values("date"),
+                fr_reset[["date", "funding_rate"]].sort_values("date"),
+                on="date",
+                direction="nearest",
+                tolerance=pd.Timedelta("2h"),
+            )
+            dataframe["funding_rate"] = merged["funding_rate"].values
             dataframe["funding_rate"] = dataframe["funding_rate"].ffill().fillna(0.0)
 
         return dataframe
@@ -603,9 +615,16 @@ class BinanceFuturesCompressionStrategy(IStrategy):
         if "oi" in dataframe.columns:
             dataframe["oi"] = dataframe["oi"].fillna(0.0)
 
-        # 恢复 index
-        if "date" in dataframe.columns and not isinstance(dataframe.index, pd.DatetimeIndex):
-            dataframe = dataframe.set_index("date")
+        # 恢复：把 date 从 index 变回列（freqtrade 要求 date 是列）
+        if isinstance(dataframe.index, pd.DatetimeIndex):
+            dataframe = dataframe.reset_index()
+        # 确保列名是 "date"（reset_index 后可能叫 "index" 或 "timestamp"）
+        if "date" not in dataframe.columns:
+            # 尝试常见的 index 名
+            for candidate in ["index", "timestamp", "Date"]:
+                if candidate in dataframe.columns:
+                    dataframe = dataframe.rename(columns={candidate: "date"})
+                    break
 
         return dataframe
 
