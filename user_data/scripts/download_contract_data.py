@@ -86,12 +86,39 @@ class RateLimiter:
 _rate_limiter = RateLimiter(min_interval=0.25)
 
 
-def create_exchange():
-    """创建 Binance 期货交易所实例"""
-    exchange = ccxt.binance({
+def create_exchange(config_path: str | None = None):
+    """创建 Binance 期货交易所实例，自动读取 config 中的代理配置"""
+    ccxt_config = {
         "options": {"defaultType": "future"},
         "timeout": 30000,
-    })
+    }
+
+    # 从 freqtrade config 读取代理
+    if config_path:
+        try:
+            import json
+            with open(config_path, "r") as f:
+                config = json.load(f)
+
+            for key in ("ccxt_config", "ccxt_async_config"):
+                cfg = config.get("exchange", {}).get(key, {})
+                # ccxt_config.proxies 格式
+                if "proxies" in cfg:
+                    proxy = cfg["proxies"].get("https") or cfg["proxies"].get("http")
+                    if proxy:
+                        ccxt_config["proxies"] = cfg["proxies"]
+                        print(f"🔧 代理: {proxy}")
+                        break
+                # ccxt_async_config.aiohttp_proxy 格式
+                if "aiohttp_proxy" in cfg:
+                    proxy = cfg["aiohttp_proxy"]
+                    ccxt_config["proxies"] = {"http": proxy, "https": proxy}
+                    print(f"🔧 代理: {proxy}")
+                    break
+        except Exception as e:
+            print(f"⚠ 读取代理配置失败: {e}")
+
+    exchange = ccxt.binance(ccxt_config)
     # 加载市场数据，确保隐式 API 方法可用
     exchange.load_markets()
     return exchange
@@ -475,7 +502,7 @@ def main():
     print(f"天数: {args.days}")
     print(f"输出: {output_dir}")
 
-    exchange = create_exchange()
+    exchange = create_exchange(config_path=args.config)
 
     # 确定交易对
     if args.pairs:
