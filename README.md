@@ -163,3 +163,7 @@ freqtrade/
 - `02-data-source-analysis.md` — 数据源分析
 - `03-strategy-design.md` — 总体设计方案
 - `04-implementation-details.md` — 实施细节
+
+## 联系方式
+
+- 邮箱：yongc20250401@gmail.com
