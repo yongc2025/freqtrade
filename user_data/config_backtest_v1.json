@@ -1,0 +1,120 @@
+{
+  "max_open_trades": 10,
+  "stake_currency": "USDT",
+  "stake_amount": "unlimited",
+  "tradable_balance_ratio": 0.95,
+  "fiat_display_currency": "USD",
+  "dry_run": true,
+  "timeframe": "1h",
+  "bot_name": "MomentumFusion_Backtest",
+  "initial_state": "running",
+  "force_entry_enable": false,
+
+  "exchange": {
+    "name": "binance",
+    "key": "",
+    "secret": "",
+    "type": "futures",
+    "ccxt_config": {
+      "timeout": 30000,
+      "options": {
+        "defaultType": "future"
+      }
+    },
+    "ccxt_async_config": {
+      "timeout": 30000,
+      "aiohttp_trust_env": false,
+      "options": {
+        "defaultType": "future"
+      }
+    },
+    "pair_whitelist": [
+      "DOGE/USDT:USDT",
+      "PEPE/USDT:USDT",
+      "WIF/USDT:USDT",
+      "ARB/USDT:USDT",
+      "OP/USDT:USDT",
+      "SUI/USDT:USDT",
+      "APT/USDT:USDT",
+      "AVAX/USDT:USDT",
+      "MATIC/USDT:USDT",
+      "LINK/USDT:USDT",
+      "NEAR/USDT:USDT",
+      "FTM/USDT:USDT",
+      "AAVE/USDT:USDT",
+      "UNI/USDT:USDT",
+      "INJ/USDT:USDT",
+      "TIA/USDT:USDT",
+      "SEI/USDT:USDT",
+      "JUP/USDT:USDT",
+      "ORDI/USDT:USDT",
+      "STX/USDT:USDT",
+      "RENDER/USDT:USDT",
+      "FET/USDT:USDT",
+      "TAO/USDT:USDT",
+      "WLD/USDT:USDT",
+      "PENDLE/USDT:USDT",
+      "ENA/USDT:USDT",
+      "TON/USDT:USDT",
+      "DOT/USDT:USDT",
+      "FIL/USDT:USDT",
+      "ATOM/USDT:USDT"
+    ],
+    "pair_blacklist": [
+      "(BSC)/.*",
+      ".*REWARD/.*",
+      ".*BEAR/.*",
+      ".*BULL/.*",
+      ".*UP/.*",
+      ".*DOWN/.*",
+      ".*BNB/.*"
+    ]
+  },
+
+  "trading_mode": "futures",
+  "margin_mode": "isolated",
+  "leverage": 1,
+  "liquidation_buffer": 0.05,
+  "fee": 0.0003,
+
+  "order_types": {
+    "entry": "limit",
+    "exit": "limit",
+    "time_in_force": "ioc",
+    "stoploss": "market",
+    "stoploss_on_exchange": true
+  },
+
+  "entry_pricing": {
+    "price_side": "other",
+    "use_order_book": true,
+    "order_book_top": 1,
+    "check_depth_of_market": {
+      "enabled": false,
+      "bids_to_ask_delta": 1
+    }
+  },
+
+  "exit_pricing": {
+    "price_side": "other",
+    "use_order_book": true,
+    "order_book_top": 1
+  },
+
+  "unfilledtimeout": {
+    "entry": 15,
+    "exit": 15,
+    "exit_timeout_count": 0
+  },
+
+  "pairlists": [
+    {"method": "StaticPairList"}
+  ],
+
+  "db_url": "sqlite:///user_data/tradesv3_momentum_backtest.sqlite?check_same_thread=False",
+  "logfile": "user_data/logs/freqtrade_momentum_backtest.log",
+
+  "internals": {
+    "process_throttle_secs": 15
+  }
+}
