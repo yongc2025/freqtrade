@@ -6,6 +6,7 @@ Binance 合约历史数据下载器
 
 用法：
     python user_data/scripts/download_contract_data.py [--days 30] [--pairs DOGE,LINK,SOL]
+    python user_data/scripts/download_contract_data.py --config user_data/config_binance_futures.json --days 30
 
 数据来源：Binance Futures API（无需 API Key，公开接口）
 """

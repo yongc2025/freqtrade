@@ -3,7 +3,7 @@
   "stake_currency": "USDT",
   "stake_amount": "unlimited",
   "tradable_balance_ratio": 0.95,
-  "fiat_display_currency": "USD",
+  "fiat_display_currency": "",
   "dry_run": true,
   "timeframe": "1h",
   "bot_name": "MomentumFusion_Backtest",
@@ -17,6 +17,7 @@
     "type": "futures",
     "ccxt_config": {
       "timeout": 30000,
+      "https_proxy": "http://127.0.0.1:10808",
       "options": {
         "defaultType": "future"
       }
@@ -24,6 +25,7 @@
     "ccxt_async_config": {
       "timeout": 30000,
       "aiohttp_trust_env": false,
+      "https_proxy": "http://127.0.0.1:10808",
       "options": {
         "defaultType": "future"
       }
@@ -107,9 +109,7 @@
     "exit_timeout_count": 0
   },
 
-  "pairlists": [
-    {"method": "StaticPairList"}
-  ],
+  "pairlists": [{ "method": "StaticPairList" }],
 
   "db_url": "sqlite:///user_data/tradesv3_momentum_backtest.sqlite?check_same_thread=False",
   "logfile": "user_data/logs/freqtrade_momentum_backtest.log",

@@ -6,7 +6,6 @@ import talib.abstract as ta
 from pandas import DataFrame
 
 from freqtrade.strategy import DecimalParameter, IntParameter, IStrategy
-from freqtrade.plugins.protections import MaxDrawdown, StoplossGuard
 
 
 class MomentumFusion_V1_1(IStrategy):
@@ -27,6 +26,8 @@ class MomentumFusion_V1_1(IStrategy):
     T10. 组合级止损：MaxDrawdown(10%) + StoplossGuard(5次/24h)
     T11. 融合权重参数化：0.6/0.4 → DecimalParameter 可优化
     ==========================================================================
+    回测：
+    freqtrade backtesting --config user_data/config_backtest_v1.json --strategy MomentumFusion_V1_1 --timerange 20250101-20251231
     """
 
     INTERFACE_VERSION = 3
