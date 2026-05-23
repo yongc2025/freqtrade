@@ -17,7 +17,6 @@
     "type": "futures",
     "ccxt_config": {
       "timeout": 30000,
-      "https_proxy": "http://127.0.0.1:10808",
       "options": {
         "defaultType": "future"
       }
@@ -25,7 +24,6 @@
     "ccxt_async_config": {
       "timeout": 30000,
       "aiohttp_trust_env": false,
-      "https_proxy": "http://127.0.0.1:10808",
       "options": {
         "defaultType": "future"
       }
