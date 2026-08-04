@@ -1,8 +1,10 @@
+import io
 import sys
+import zipfile
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, BackgroundTasks, Query, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -20,6 +22,7 @@ DB_NAME = sys.argv[1] if len(sys.argv) > 1 else "tradesv3_momentum_live.sqlite"
 DB_PATH = ROOT / "user_data" / Path(DB_NAME).name
 STARTING_BALANCE = float(sys.argv[2]) if len(sys.argv) > 2 else 1000.0
 PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 8788
+STRATEGIES_DIR = ROOT / "user_data" / "strategies"
 
 LIVE_REPORT_SCRIPT = THIS_DIR / "scripts" / "live_report.py"
 LIVE_REPORT_JSON = ROOT / "user_data" / "live_report.json"
@@ -67,6 +70,29 @@ async def refresh_scan(bg: BackgroundTasks):
         return {"message": "already running"}
     bg.add_task(scanner.scan)
     return {"message": "started"}
+
+@app.get("/api/strategies/download")
+async def download_strategy_library():
+    if not STRATEGIES_DIR.exists():
+        return JSONResponse(status_code=404, content={"message": "strategies directory not found"})
+
+    strategy_files = sorted(
+        path for path in STRATEGIES_DIR.rglob("*.py") if "__pycache__" not in path.parts
+    )
+    if not strategy_files:
+        return JSONResponse(status_code=404, content={"message": "no strategy files found"})
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in strategy_files:
+            archive.write(path, arcname=path.relative_to(STRATEGIES_DIR).as_posix())
+
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=strategy_library.zip"},
+    )
 
 @app.get("/api/live-report/status")
 async def get_report_status():

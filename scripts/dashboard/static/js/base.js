@@ -148,6 +148,10 @@ async function initDatabaseSelector() {
   }
 }
 
+function downloadStrategyLibrary() {
+  window.location.href = "/api/strategies/download";
+}
+
 function clearAllPageData() {
   // --- 选币扫描 ---
   const scanTbody = document.getElementById("scan-tbody");
