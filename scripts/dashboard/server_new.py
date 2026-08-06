@@ -73,25 +73,29 @@ async def refresh_scan(bg: BackgroundTasks):
 
 @app.get("/api/strategies/download")
 async def download_strategy_library():
-    if not STRATEGIES_DIR.exists():
-        return JSONResponse(status_code=404, content={"message": "strategies directory not found"})
+    """下载 user_data 下所有 .sqlite 数据库文件 (备份用)"""
+    user_data_dir = ROOT / "user_data"
+    if not user_data_dir.exists():
+        return JSONResponse(status_code=404, content={"message": "user_data directory not found"})
 
-    strategy_files = sorted(
-        path for path in STRATEGIES_DIR.rglob("*.py") if "__pycache__" not in path.parts
+    db_files = sorted(
+        path for path in user_data_dir.rglob("*.sqlite")
+        if "__pycache__" not in path.parts and ".tmp" not in path.name
     )
-    if not strategy_files:
-        return JSONResponse(status_code=404, content={"message": "no strategy files found"})
+    if not db_files:
+        return JSONResponse(status_code=404, content={"message": "no database files found"})
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in strategy_files:
-            archive.write(path, arcname=path.relative_to(STRATEGIES_DIR).as_posix())
+        for path in db_files:
+            arcname = f"user_data/{path.relative_to(user_data_dir).as_posix()}"
+            archive.write(path, arcname=arcname)
 
     buffer.seek(0)
     return StreamingResponse(
         buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=strategy_library.zip"},
+        headers={"Content-Disposition": "attachment; filename=databases_backup.zip"},
     )
 
 @app.get("/api/live-report/status")
